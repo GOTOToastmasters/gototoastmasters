@@ -27,8 +27,8 @@ var PUBLISH_ALLOWLIST = {
   '11odd_FP2wLXZOGLoNw1y8upnEfUBXVrq3JNnOenZSJ4':  'docs/pitch.md',
   // Toastmaster Checklist (static content; interactivity added in Phase D)
   '1X7Z86L2b7jwmTZ2YC59FZY6sGESKVyZIoobmAFj_ceI': 'docs/checklist.md',
-  // Committee Role Expectations (Phase B task 4 — doc to be authored)
-  // 'PASTE_COMMITTEE_ROLES_DOC_ID':      'docs/committee-roles.md',
+  // Committee Role Expectations → Committee Roles page
+  '1UAgKxeTZIC6ObXLkzT7e58qSW0jrKW_mQksQRzVIf-Q': 'docs/committee-roles.md',
 };
 
 // Committee notification email (receives a summary on every publish run that
@@ -42,15 +42,31 @@ var NOTIFY_EMAIL = 'goto.toastmasters.committee@gmail.com';
  * Checks each allowlisted Doc for changes since last publish; only re-publishes
  * if the Doc has been modified since the last successful publish.
  */
+// ── Spreadsheet config (for Events / Meetings tab) ────────────────────────────
+// The spreadsheet holding the Meetings tab. Set via Script Properties so the
+// owner can repoint it (e.g. to the prod sheet) without a code change:
+//   Project Settings → Script Properties → MEETINGS_SS_ID = <sheet id>
+// The account the daily trigger runs as must have read access to that sheet.
+var MEETINGS_TAB = 'Meetings';
+
+function getMeetingsSsId_() {
+  var id = PropertiesService.getScriptProperties().getProperty('MEETINGS_SS_ID');
+  if (!id) {
+    throw new Error('MEETINGS_SS_ID not set in Script Properties. ' +
+      'Add it under Project Settings → Script Properties.');
+  }
+  return id;
+}
+
 function publishAll() {
-  Logger.log('=== publishAll starting ===');
+  console.log('=== publishAll starting ===');
   var props   = PropertiesService.getScriptProperties();
   var changed = 0;
   var errors  = [];
 
   var docIds = Object.keys(PUBLISH_ALLOWLIST);
   if (docIds.length === 0) {
-    Logger.log('Allowlist is empty — nothing to publish. Add Doc IDs to PUBLISH_ALLOWLIST.');
+    console.log('Allowlist is empty — nothing to publish. Add Doc IDs to PUBLISH_ALLOWLIST.');
     return;
   }
 
@@ -63,24 +79,43 @@ function publishAll() {
       var currentMs   = file.getLastUpdated().getTime().toString();
 
       if (lastMs === currentMs) {
-        Logger.log('  No changes: ' + file.getName());
+        console.log('  No changes: ' + file.getName());
         return;
       }
 
-      Logger.log('  Publishing: ' + file.getName() + ' → ' + repoPath);
+      console.log('  Publishing: ' + file.getName() + ' → ' + repoPath);
       var doc      = DocumentApp.openById(docId);
       var markdown = docToMarkdown_(doc);
-      var url      = commitToGitHub_(repoPath, markdown, 'Auto-publish: ' + doc.getName());
+      var url = commitToGitHub_(repoPath, markdown, 'Auto-publish: ' + doc.getName());
       props.setProperty(modifiedKey, currentMs);
-      changed++;
-      Logger.log('  Done: ' + (url || 'committed'));
+      if (url !== null) {
+        changed++;
+        console.log('  Done: ' + url);
+      } else {
+        console.log('  Skipped (content unchanged): ' + repoPath);
+      }
     } catch (err) {
-      Logger.log('  ERROR for ' + docId + ': ' + err.message);
+      console.log('  ERROR for ' + docId + ': ' + err.message);
       errors.push(docId + ': ' + err.message);
     }
   });
 
-  Logger.log('=== publishAll complete. ' + changed + ' published, ' + errors.length + ' error(s) ===');
+  // Phase C: sync Eventbrite URLs into the Meetings tab, then regenerate events page
+  try {
+    syncEventbriteUrls_();
+  } catch (err) {
+    console.log('  Eventbrite sync error: ' + err.message);
+    errors.push('Eventbrite sync: ' + err.message);
+  }
+  try {
+    var evChanged = publishEvents_();
+    if (evChanged) changed++;
+  } catch (err) {
+    console.log('  Events page error: ' + err.message);
+    errors.push('Events page: ' + err.message);
+  }
+
+  console.log('=== publishAll complete. ' + changed + ' published, ' + errors.length + ' error(s) ===');
 
   if (changed > 0 || errors.length > 0) {
     notifyCommittee_(changed, errors);
@@ -105,35 +140,8 @@ function publishNow(docId) {
     'last_published_' + docId,
     DriveApp.getFileById(docId).getLastUpdated().getTime().toString()
   );
-  Logger.log('Published ' + doc.getName() + ' → ' + repoPath);
-  Logger.log('Commit: ' + (url || 'OK'));
-}
-
-// ── Test helpers — push specific Docs to the test branch ─────────────────────
-
-/**
- * Publish the Role Guide to the test branch for diff review.
- * Set GITHUB_BRANCH = 'test/publish-pipeline' in Script Properties first.
- */
-function testPublishRoleGuide() {
-  publishNow('1c-_XD32gXbSiElJUc99GAyZUq_Ywq02uBAjTXTTW3e0');
-}
-
-/** Publish the Club Offering (Pitch) to the test branch. */
-function testPublishPitch() {
-  publishNow('11odd_FP2wLXZOGLoNw1y8upnEfUBXVrq3JNnOenZSJ4');
-}
-
-/** Publish the Toastmaster Checklist to the test branch. */
-function testPublishChecklist() {
-  publishNow('1X7Z86L2b7jwmTZ2YC59FZY6sGESKVyZIoobmAFj_ceI');
-}
-
-/** Publish all three Docs to the test branch in one go. */
-function testPublishAll() {
-  testPublishRoleGuide();
-  testPublishPitch();
-  testPublishChecklist();
+  console.log('Published ' + doc.getName() + ' → ' + repoPath);
+  console.log('Commit: ' + (url || 'OK'));
 }
 
 // ── PROTOTYPE — run this first to validate the converter ─────────────────────
@@ -151,16 +159,37 @@ function testPublishAll() {
 function protoConvertRoleGuide() {
   var DOC_ID = '1c-_XD32gXbSiElJUc99GAyZUq_Ywq02uBAjTXTTW3e0';
 
-  Logger.log('Opening doc...');
+  console.log('Opening doc...');
   var doc = DocumentApp.openById(DOC_ID);
-  Logger.log('Converting: ' + doc.getName());
+  console.log('Converting: ' + doc.getName());
 
   var md = docToMarkdown_(doc);
-  Logger.log('Output length: ' + md.length + ' chars');
+  console.log('Output length: ' + md.length + ' chars');
 
   // Log in 3000-char chunks (Apps Script logger truncates long strings)
   for (var i = 0; i < md.length; i += 3000) {
-    Logger.log(md.substring(i, i + 3000));
+    console.log(md.substring(i, i + 3000));
+  }
+}
+
+/**
+ * Debug helper: log the element types and first 80 chars of text for every
+ * top-level child in the Pitch doc body. Run this when content appears missing
+ * to identify unexpected element types (text boxes, TOC, extra sections, etc.)
+ */
+function debugPitchElements() {
+  var DOC_ID = '11odd_FP2wLXZOGLoNw1y8upnEfUBXVrq3JNnOenZSJ4';
+  var doc    = DocumentApp.openById(DOC_ID);
+  var body   = doc.getBody();
+  var n      = body.getNumChildren();
+  console.log('Total body children: ' + n);
+  for (var i = 0; i < n; i++) {
+    var child = body.getChild(i);
+    var type  = child.getType();
+    var preview = '';
+    try { preview = child.asText ? child.asText().getText().substring(0, 80)
+                                 : child.getText().substring(0, 80); } catch(e) {}
+    console.log('[' + i + '] ' + type + ' | ' + preview);
   }
 }
 
@@ -185,8 +214,10 @@ function protoConvertRoleGuide() {
 function docToMarkdown_(doc) {
   var body        = doc.getBody();
   var numChildren = body.getNumChildren();
-  var lines       = [];
-  var prevBlank   = false;
+  // Emit the document file name as the top-level H1 title.
+  // getBody() does NOT include the document title — only body paragraphs.
+  var lines       = ['# ' + doc.getName(), ''];
+  var prevBlank   = true;
   var listCounters = {}; // nestingLevel → ordered list counter
 
   // ── Pass 1: collect H1 headings for the auto-generated inline TOC ─────────
@@ -217,11 +248,46 @@ function docToMarkdown_(doc) {
     var child = body.getChild(i);
     var type  = child.getType();
 
+    // ── LIST_ITEM elements (Google Docs native list type) ──────────────────
+    if (type === DocumentApp.ElementType.LIST_ITEM) {
+      var li         = child.asListItem();
+      var nestLevel  = li.getNestingLevel(); // 0-based
+      var glyphType  = li.getGlyphType();
+      var isOrdered  = (
+        glyphType === DocumentApp.GlyphType.NUMBER        ||
+        glyphType === DocumentApp.GlyphType.LATIN_UPPER   ||
+        glyphType === DocumentApp.GlyphType.LATIN_LOWER   ||
+        glyphType === DocumentApp.GlyphType.ROMAN_UPPER   ||
+        glyphType === DocumentApp.GlyphType.ROMAN_LOWER
+      );
+      var indent     = repeatStr('  ', nestLevel);
+      var inlineText = paraInlineToMd_(li);
+
+      // Python-Markdown (used by MkDocs) requires a blank line before a list
+      // when it follows a paragraph. Insert one at the start of each list block
+      // (i.e. when the previous output line was not already blank).
+      if (!prevBlank && nestLevel === 0) { lines.push(''); }
+
+      if (isOrdered) {
+        Object.keys(listCounters).forEach(function(k) {
+          if (parseInt(k, 10) > nestLevel) delete listCounters[k];
+        });
+        listCounters[nestLevel] = (listCounters[nestLevel] || 0) + 1;
+        lines.push(indent + listCounters[nestLevel] + '. ' + inlineText);
+      } else {
+        lines.push(indent + '- ' + inlineText);
+      }
+      prevBlank = false;
+      continue;
+    }
+
     if (type === DocumentApp.ElementType.PARAGRAPH) {
       var para    = child.asParagraph();
       var heading = para.getHeading();
 
-      // ── List items ────────────────────────────────────────
+      // ── List items (PARAGRAPH subtype with a list ID) ─────────────────────
+      // Some older Google Docs represent list items as PARAGRAPH elements with
+      // a listId rather than as LIST_ITEM elements. Handle both.
       var listId = null;
       try { listId = para.getListId(); } catch (e) {}
 
@@ -238,8 +304,9 @@ function docToMarkdown_(doc) {
         var indent     = repeatStr('  ', nestLevel);
         var inlineText = paraInlineToMd_(para);
 
+        if (!prevBlank && nestLevel === 0) { lines.push(''); }
+
         if (isOrdered) {
-          // Reset counters for deeper nesting levels when stepping back out
           Object.keys(listCounters).forEach(function(k) {
             if (parseInt(k, 10) > nestLevel) delete listCounters[k];
           });
@@ -254,6 +321,16 @@ function docToMarkdown_(doc) {
 
       // Leaving a list — reset ordered counters
       listCounters = {};
+
+      // ── Skip TITLE / SUBTITLE body paragraphs ─────────────
+      // The document title is already emitted from doc.getName() at the top.
+      // TITLE/SUBTITLE styled body paragraphs are decorative and would produce
+      // a duplicate heading (or stray plain text if they match the file name).
+      var H_ = DocumentApp.ParagraphHeading;
+      if (heading === H_.TITLE || heading === H_.SUBTITLE) {
+        if (!prevBlank) { lines.push(''); prevBlank = true; }
+        continue;
+      }
 
       // ── Headings ──────────────────────────────────────────
       var hashes = headingPrefix_(heading);
@@ -346,8 +423,10 @@ function docToMarkdown_(doc) {
  */
 function headingPrefix_(heading) {
   var H = DocumentApp.ParagraphHeading;
-  if (heading === H.TITLE)    return '# ';   // Google Docs "Title" style → H1
-  if (heading === H.SUBTITLE) return '## ';  // Google Docs "Subtitle" style → H2
+  // TITLE and SUBTITLE are Google Docs styling applied to body paragraphs; the
+  // actual document title comes from doc.getName() and is emitted separately at
+  // the top of the output. Treat these body styles as normal text to avoid
+  // producing blank H1/H2 lines when the paragraph text is empty or decorative.
   if (heading === H.HEADING1) return '# ';
   if (heading === H.HEADING2) return '## ';
   if (heading === H.HEADING3) return '### ';
@@ -421,11 +500,20 @@ function textElToMd_(textEl) {
       // Inline code — use backticks; double-backtick if content contains backtick
       var tick = t.indexOf('`') >= 0 ? '``' : '`';
       t = tick + t + tick;
-    } else {
-      if (strike)             t = '~~' + t + '~~';
-      if (bold && italic)     t = '***' + t + '***';
-      else if (bold)          t = '**' + t + '**';
-      else if (italic)        t = '*' + t + '*';
+    } else if (bold || italic || strike) {
+      // Markdown inline markers must not have leading/trailing spaces inside them
+      // (e.g. "** text **" is not valid bold — the spaces break the parser).
+      // Strip surrounding spaces from the text, apply markers, then reattach spaces.
+      var leading  = t.match(/^\s*/)[0];
+      var trailing = t.match(/\s*$/)[0];
+      var inner    = t.slice(leading.length, t.length - trailing.length);
+      if (inner) {
+        if (strike)           inner = '~~' + inner + '~~';
+        if (bold && italic)   inner = '***' + inner + '***';
+        else if (bold)        inner = '**' + inner + '**';
+        else if (italic)      inner = '*' + inner + '*';
+      }
+      t = leading + inner + trailing;
     }
 
     if (link) t = '[' + t + '](' + link + ')';
@@ -524,7 +612,22 @@ function commitToGitHub_(repoPath, content, message) {
     muteHttpExceptions: true,
   });
   if (getResp.getResponseCode() === 200) {
-    currentSha = JSON.parse(getResp.getContentText()).sha;
+    var getObj = JSON.parse(getResp.getContentText());
+    currentSha = getObj.sha;
+
+    // Skip the PUT entirely if the new content is byte-identical to what's
+    // already on GitHub. GitHub's Contents API returns 200 with the EXISTING
+    // commit for an identical PUT (no new commit), which used to make callers
+    // think a change happened and fire a false "page auto-published" email.
+    if (getObj.content) {
+      var existing = Utilities.newBlob(
+        Utilities.base64Decode(getObj.content.replace(/\n/g, ''), Utilities.Charset.UTF_8)
+      ).getDataAsString('UTF-8');
+      if (existing === content) {
+        console.log('[commitToGitHub_] ' + repoPath + ' unchanged — skipping commit.');
+        return null;
+      }
+    }
   }
 
   // PUT (create or update)
@@ -579,8 +682,201 @@ function notifyCommittee_(numChanged, errors) {
   try {
     GmailApp.sendEmail(NOTIFY_EMAIL, subject, body);
   } catch (e) {
-    Logger.log('Failed to send notification email: ' + e.message);
+    console.log('Failed to send notification email: ' + e.message);
   }
+}
+
+// ── Phase C: Eventbrite sync ──────────────────────────────────────────────────
+
+/**
+ * Fetches upcoming events from Eventbrite for the GOTO org and writes the
+ * registration URL into the Meetings tab for any row whose date matches.
+ *
+ * Rules:
+ *   - If a row has a Manual Eventbrite URL, it is never overwritten.
+ *   - If Eventbrite returns an event on the same date, write its URL into
+ *     the Eventbrite URL column.
+ *
+ * Requires Script Properties: EVENTBRITE_TOKEN, EVENTBRITE_ORG_ID.
+ */
+function syncEventbriteUrls_() {
+  var props = PropertiesService.getScriptProperties().getProperties();
+  var token = props['EVENTBRITE_TOKEN'];
+  var orgId = props['EVENTBRITE_ORG_ID'] || '111570638511';
+
+  if (!token) {
+    console.log('[syncEventbrite] EVENTBRITE_TOKEN not set — skipping.');
+    return;
+  }
+
+  // Fetch live upcoming events
+  var allEvents = [];
+  var page      = 1;
+  var hasMore   = true;
+  while (hasMore) {
+    var pageUrl = 'https://www.eventbriteapi.com/v3/organizers/' + orgId +
+                  '/events/?status=live&order_by=start_asc&page=' + page;
+    var resp = UrlFetchApp.fetch(pageUrl, {
+      headers: { 'Authorization': 'Bearer ' + token },
+      muteHttpExceptions: true,
+    });
+    if (resp.getResponseCode() !== 200) {
+      console.log('[syncEventbrite] API error ' + resp.getResponseCode() + ': ' +
+                 resp.getContentText().substring(0, 200));
+      return;
+    }
+    var body = JSON.parse(resp.getContentText());
+    (body.events || []).forEach(function(ev) { allEvents.push(ev); });
+    var pg  = body.pagination;
+    hasMore = !!(pg && pg.has_more_items);
+    page++;
+  }
+  console.log('[syncEventbrite] Fetched ' + allEvents.length + ' live event(s).');
+
+  // Build YYYY-MM-DD → { url, name } map
+  var eventByDate = {};
+  allEvents.forEach(function(ev) {
+    var dateKey = ev.start.local.substring(0, 10);
+    eventByDate[dateKey] = { url: ev.url, name: (ev.name || {}).text || '' };
+  });
+
+  var ss    = SpreadsheetApp.openById(getMeetingsSsId_());
+  var sheet = ss.getSheetByName(MEETINGS_TAB);
+  if (!sheet) { console.log('[syncEventbrite] Meetings tab not found.'); return; }
+
+  var lastCol      = sheet.getLastColumn();
+  var headers      = sheet.getRange(1, 1, 1, lastCol).getValues()[0];
+  var autoUrlCol   = headers.indexOf('Eventbrite URL');
+  var manualUrlCol = headers.indexOf('Manual Eventbrite URL');
+
+  if (autoUrlCol < 0) {
+    console.log('[syncEventbrite] "Eventbrite URL" column missing — run fixMasterSchema() first.');
+    return;
+  }
+
+  var lastRow = sheet.getLastRow();
+  if (lastRow < 2) return;
+
+  var data    = sheet.getRange(2, 1, lastRow - 1, lastCol).getValues();
+  var updated = 0;
+
+  data.forEach(function(row, i) {
+    var rowNum  = i + 2;
+    var rawDate = row[0]; // Date is always column 1
+    if (!rawDate) return;
+    if (manualUrlCol >= 0 && row[manualUrlCol]) return; // manual URL wins
+
+    var d = parseMeetingDate_(rawDate);
+    if (!d) return;
+    var dateKey = Utilities.formatDate(d, 'Australia/Melbourne', 'yyyy-MM-dd');
+    var match   = eventByDate[dateKey];
+    var current = row[autoUrlCol] || '';
+    var newUrl  = match ? match.url : '';
+
+    if (newUrl && newUrl !== current) {
+      sheet.getRange(rowNum, autoUrlCol + 1).setValue(newUrl);
+      console.log('[syncEventbrite] Row ' + rowNum + ' (' + dateKey + '): ' + newUrl);
+      updated++;
+    }
+  });
+
+  SpreadsheetApp.flush();
+  console.log('[syncEventbrite] ' + updated + ' row(s) updated.');
+}
+
+// ── Phase C: Events page generator ───────────────────────────────────────────
+
+/**
+ * Reads the Meetings tab and generates docs/events.md, committing to GitHub.
+ * Only upcoming meetings (date >= today) are included.
+ * Returns true if the commit went through.
+ */
+function publishEvents_() {
+  var ss    = SpreadsheetApp.openById(getMeetingsSsId_());
+  var sheet = ss.getSheetByName(MEETINGS_TAB);
+  if (!sheet || sheet.getLastRow() < 2) {
+    console.log('[publishEvents] Meetings tab empty — skipping.');
+    return false;
+  }
+
+  var lastCol      = sheet.getLastColumn();
+  var headers      = sheet.getRange(1, 1, 1, lastCol).getValues()[0];
+  var autoUrlCol   = headers.indexOf('Eventbrite URL');
+  var manualUrlCol = headers.indexOf('Manual Eventbrite URL');
+  var esIdCol      = headers.indexOf('Easy-Speak Thread ID');
+  var TYPE_COL     = 1; // col 2 = Type (0-based index 1)
+
+  var today = new Date();
+  today.setHours(0, 0, 0, 0);
+
+  var data = sheet.getRange(2, 1, sheet.getLastRow() - 1, lastCol).getValues();
+
+  var upcoming = [];
+  data.forEach(function(row) {
+    var rawDate = row[0];
+    if (!rawDate) return;
+    var d = parseMeetingDate_(rawDate);
+    if (!d || d < today) return;
+    var url  = (manualUrlCol >= 0 && row[manualUrlCol]) ? row[manualUrlCol]
+             : (autoUrlCol   >= 0 ? row[autoUrlCol]   : '');
+    var esId = (esIdCol >= 0 && row[esIdCol]) ? String(row[esIdCol]).trim() : '';
+    upcoming.push({ date: d, type: (row[TYPE_COL] || '').trim(), url: url || '', esId: esId });
+  });
+
+  upcoming.sort(function(a, b) { return a.date - b.date; });
+
+  var lines = [
+    '# Upcoming Events',
+    '',
+    '_This page updates automatically from the meeting schedule._',
+    '',
+    '[→ Agenda for our next meeting on Easy-Speak](https://easy-speak.org/view_meeting.php?c=13017&show=next)',
+    '',
+  ];
+
+  if (upcoming.length === 0) {
+    lines.push('No upcoming events scheduled at this time. Check back soon!');
+    lines.push('');
+  } else {
+    upcoming.forEach(function(ev) {
+      var dateFmt = Utilities.formatDate(ev.date, 'Australia/Melbourne', 'EEEE d MMMM yyyy');
+      var label   = ev.type || 'GOTO Toastmasters Meeting';
+
+      lines.push(ev.url ? '## [' + label + '](' + ev.url + ')' : '## ' + label);
+      lines.push('');
+      lines.push('**' + dateFmt + '** &nbsp;·&nbsp; 5:30 PM AEST &nbsp;·&nbsp; Melbourne CBD');
+      lines.push('');
+      if (ev.url) {
+        lines.push('[Register on Eventbrite ↗](' + ev.url + ')');
+        lines.push('');
+      }
+      if (ev.esId) {
+        lines.push('[View agenda on Easy-Speak ↗](https://easy-speak.org/view_meeting.php?t=' + ev.esId + ')');
+        lines.push('');
+      }
+      lines.push('---');
+      lines.push('');
+    });
+  }
+
+  var md     = lines.join('\n');
+  var result = commitToGitHub_('docs/events.md', md, 'auto: refresh Events page from meeting schedule');
+  console.log('[publishEvents] events.md committed with ' + upcoming.length + ' upcoming event(s).');
+  return !!result;
+}
+
+/**
+ * Parse a date value from the Meetings sheet.
+ * Handles Date objects, ISO strings, and DD/MM/YYYY strings.
+ */
+function parseMeetingDate_(val) {
+  if (!val) return null;
+  if (val instanceof Date) return isNaN(val.getTime()) ? null : val;
+  var s  = val.toString().trim();
+  var au = s.match(/^(\d{1,2})\/(\d{1,2})\/(\d{4})$/);
+  if (au) return new Date(parseInt(au[3]), parseInt(au[2]) - 1, parseInt(au[1]));
+  var d = new Date(s);
+  return isNaN(d.getTime()) ? null : d;
 }
 
 // ── Trigger setup (run once) ──────────────────────────────────────────────────
@@ -593,7 +889,7 @@ function createDailyTrigger() {
   var triggers = ScriptApp.getProjectTriggers();
   for (var i = 0; i < triggers.length; i++) {
     if (triggers[i].getHandlerFunction() === 'publishAll') {
-      Logger.log('Daily trigger already exists — skipping.');
+      console.log('Daily trigger already exists — skipping.');
       return;
     }
   }
@@ -602,7 +898,7 @@ function createDailyTrigger() {
     .everyDays(1)
     .atHour(3) // 3am Melbourne time
     .create();
-  Logger.log('Daily trigger created (runs at 3am Melbourne time).');
+  console.log('Daily trigger created (runs at 3am Melbourne time).');
 }
 
 /**
@@ -612,7 +908,7 @@ function removeDailyTrigger() {
   ScriptApp.getProjectTriggers().forEach(function(t) {
     if (t.getHandlerFunction() === 'publishAll') {
       ScriptApp.deleteTrigger(t);
-      Logger.log('Daily trigger removed.');
+      console.log('Daily trigger removed.');
     }
   });
 }

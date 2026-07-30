@@ -20,17 +20,29 @@ clasp push
 
 In the Apps Script editor: **Project Settings → Script Properties → Add property**
 
-| Property        | Value                                                         |
-|-----------------|---------------------------------------------------------------|
-| `GITHUB_TOKEN`  | Fine-grained PAT: Contents **Read and Write** on the repo     |
-| `GITHUB_OWNER`  | `rkenefeck` (or whatever the GitHub username is)              |
-| `GITHUB_REPO`   | `gototoastmasters`                                            |
-| `GITHUB_BRANCH` | `main`                                                        |
+| Property            | Value                                                         |
+|---------------------|---------------------------------------------------------------|
+| `GITHUB_TOKEN`      | Fine-grained PAT: Contents **Read and Write** on the repo     |
+| `GITHUB_OWNER`      | `rkenefeck` (or whatever the GitHub username is)              |
+| `GITHUB_REPO`       | `gototoastmasters`                                            |
+| `GITHUB_BRANCH`     | `main`                                                        |
+| `MEETINGS_SS_ID`    | Spreadsheet ID holding the `Meetings` tab (drives the Events page) |
+| `EVENTBRITE_TOKEN`  | Eventbrite API token (optional — enables auto Eventbrite URL sync) |
+| `EVENTBRITE_ORG_ID` | Eventbrite organiser ID (optional; defaults to `111570638511`) |
 
 To create the fine-grained token: github.com → Settings → Developer settings →
 Personal access tokens → Fine-grained tokens → New token.
 Permissions: **Repository permissions → Contents → Read and Write**.
 Scope: Only the `gototoastmasters` repo.
+
+> **Handover note:** the committee should create its **own** fine-grained PAT under a
+> committee-owned GitHub account and set it as `GITHUB_TOKEN`, so the pipeline no longer
+> depends on anyone else's credential. Give the token an expiry and rotate it per your
+> security policy.
+
+`MEETINGS_SS_ID` is read at runtime (not hardcoded), so you can repoint the Events page
+to a different sheet by changing this property alone. The account the daily trigger runs
+as must have **read access** to that sheet.
 
 ---
 
@@ -95,3 +107,12 @@ Check:
   run `clasp push`. The daily trigger picks it up automatically.
 - To remove a Doc from publishing: remove it from `PUBLISH_ALLOWLIST`.
   The file already in the repo is not deleted.
+
+## Events page (in addition to the Docs)
+
+Beyond the allowlisted Docs, `publishAll()` also regenerates `docs/events.md` from the
+`Meetings` tab of `MEETINGS_SS_ID`: it syncs Eventbrite registration URLs (if
+`EVENTBRITE_TOKEN` is set) and renders per-meeting Easy-Speak agenda links. Per-meeting
+Easy-Speak links come from an **Easy-Speak Thread ID** column on the `Meetings` tab, which
+is maintained manually (re-exported from Easy-Speak when the schedule changes) — there is
+no live feed.
