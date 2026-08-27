@@ -4,10 +4,14 @@
 // Standalone Apps Script project. One-time setup:
 //   1. clasp create --type standalone --title "GOTO Publish Pipeline"
 //   2. Set Script Properties (Project Settings → Script Properties):
-//        GITHUB_TOKEN  — fine-grained PAT with contents:write on the repo
-//        GITHUB_OWNER  — e.g. "rkenefeck"
+//        GITHUB_APP_ID          — the committee GitHub App's numeric App ID
+//        GITHUB_APP_INSTALL_ID  — the App's installation ID
+//        GITHUB_APP_PRIVATE_KEY — PKCS#8 private key, base64-encoded to one line
+//        GITHUB_OWNER  — e.g. "GOTOToastmasters"
 //        GITHUB_REPO   — e.g. "gototoastmasters"
 //        GITHUB_BRANCH — e.g. "main"  (defaults to "main" if omitted)
+//      (Auth is a GitHub App — see getInstallationToken_() at the foot of this
+//       file. The old GITHUB_TOKEN PAT is revoked; do not re-add it.)
 //   3. Add the Role Guide Doc ID (and others) to PUBLISH_ALLOWLIST below.
 //   4. Run createDailyTrigger() once to start the scheduled poll.
 //
@@ -571,11 +575,14 @@ function tableToMd_(table) {
  * Create or update a file in the GitHub repo via the Contents API.
  * Fetches the current file SHA first (required for updates).
  *
+ * Authenticates as the committee GitHub App via getInstallationToken_(), which
+ * mints a short-lived installation token per run (no stored PAT).
+ *
  * Requires Script Properties:
- *   GITHUB_TOKEN  — fine-grained PAT with "Contents: Read and Write" on the repo.
- *   GITHUB_OWNER  — GitHub username or org (e.g. "rkenefeck").
+ *   GITHUB_OWNER  — GitHub username or org (e.g. "GOTOToastmasters").
  *   GITHUB_REPO   — Repository name (e.g. "gototoastmasters").
  *   GITHUB_BRANCH — Branch to commit to (defaults to "main").
+ *   plus the GITHUB_APP_* properties read by getInstallationToken_().
  *
  * @param {string} repoPath  File path in the repo (e.g. "docs/roles.md").
  * @param {string} content   UTF-8 file content.
@@ -584,7 +591,7 @@ function tableToMd_(table) {
  */
 function commitToGitHub_(repoPath, content, message) {
   var props  = PropertiesService.getScriptProperties();
-  var token  = props.getProperty('GITHUB_TOKEN');
+  var token = getInstallationToken_();
   var owner  = props.getProperty('GITHUB_OWNER');
   var repo   = props.getProperty('GITHUB_REPO');
   var branch = props.getProperty('GITHUB_BRANCH') || 'main';
@@ -592,7 +599,8 @@ function commitToGitHub_(repoPath, content, message) {
   if (!token || !owner || !repo) {
     throw new Error(
       'GitHub Script Properties not configured. ' +
-      'Set GITHUB_TOKEN, GITHUB_OWNER, GITHUB_REPO in Project Settings → Script Properties.'
+      'Set GITHUB_OWNER and GITHUB_REPO in Project Settings → Script Properties ' +
+      '(auth comes from the GITHUB_APP_* properties via getInstallationToken_()).'
     );
   }
 
@@ -911,6 +919,86 @@ function removeDailyTrigger() {
       console.log('Daily trigger removed.');
     }
   });
+}
+/**
+ * GitHub App authentication for the GOTO publish pipeline.
+ *
+ * Replaces the static GITHUB_TOKEN PAT with short-lived GitHub App
+ * installation tokens (auto-expire after 1 hour, no manual rotation).
+ *
+ * Requires these Script Properties (Project Settings → Script Properties):
+ *   GITHUB_APP_ID           - the App's numeric App ID
+ *   GITHUB_APP_INSTALL_ID   - the installation ID (from the install URL)
+ *   GITHUB_APP_PRIVATE_KEY  - the PKCS#8 private key, base64-encoded to a
+ *                             single line (see below)
+ *
+ * KEY SETUP (do once, on your machine):
+ *   1. GitHub issues the key in PKCS#1 ("BEGIN RSA PRIVATE KEY"); Apps Script's
+ *      signer needs PKCS#8. Convert it:
+ *        openssl pkcs8 -topk8 -inform PEM -outform PEM -nocrypt \
+ *          -in github-app.private-key.pem -out app-pkcs8.pem
+ *   2. Base64-encode the PKCS#8 key to a single line (avoids Script Properties
+ *      mangling the PEM newlines):
+ *        openssl base64 -A -in app-pkcs8.pem
+ *   3. Paste that single line into GITHUB_APP_PRIVATE_KEY.
+ *
+ * The code base64-decodes it back to a pristine PEM at runtime, so no
+ * whitespace repair is needed.
+ */
+function getInstallationToken_() {
+  var cache  = CacheService.getScriptCache();
+  var cached = cache.get('gh_inst_token');
+  if (cached) return cached;
+
+  var props     = PropertiesService.getScriptProperties();
+  var appId     = props.getProperty('GITHUB_APP_ID');
+  var installId = props.getProperty('GITHUB_APP_INSTALL_ID');
+  var pemB64    = props.getProperty('GITHUB_APP_PRIVATE_KEY');
+  if (!appId || !installId || !pemB64) {
+    throw new Error('GitHub App not configured: set GITHUB_APP_ID, ' +
+                    'GITHUB_APP_INSTALL_ID, GITHUB_APP_PRIVATE_KEY.');
+  }
+
+  // Decode the base64-stored key back into a proper PEM string.
+  // .trim() guards against a stray trailing newline in the stored value.
+  var pem = Utilities.newBlob(Utilities.base64Decode(pemB64.trim()))
+                     .getDataAsString();
+
+  // 1. Build a short-lived App JWT (max 10 min; backdate iat 30s for clock skew).
+  var now    = Math.floor(Date.now() / 1000);
+  var header = { alg: 'RS256', typ: 'JWT' };
+  var claims = { iat: now - 30, exp: now + 540, iss: appId };
+  var b64url = function (obj) {
+    return Utilities.base64EncodeWebSafe(JSON.stringify(obj)).replace(/=+$/, '');
+  };
+  var signingInput = b64url(header) + '.' + b64url(claims);
+  var sigBytes     = Utilities.computeRsaSha256Signature(signingInput, pem);
+  var jwt          = signingInput + '.' +
+                     Utilities.base64EncodeWebSafe(sigBytes).replace(/=+$/, '');
+
+  // 2. Exchange the JWT for a 1-hour installation token.
+  var resp = UrlFetchApp.fetch(
+    'https://api.github.com/app/installations/' + installId + '/access_tokens',
+    {
+      method:  'post',
+      headers: {
+        'Authorization':        'Bearer ' + jwt,
+        'Accept':               'application/vnd.github+json',
+        'X-GitHub-Api-Version': '2022-11-28',
+      },
+      muteHttpExceptions: true,
+    }
+  );
+  var code = resp.getResponseCode();
+  var body = JSON.parse(resp.getContentText());
+  if (code !== 201) {
+    throw new Error('GitHub App token exchange failed (' + code + '): ' +
+                    (body.message || resp.getContentText()));
+  }
+
+  // Token lives 60 min; cache 50 min so one publishAll() run reuses it.
+  cache.put('gh_inst_token', body.token, 3000);
+  return body.token;
 }
 
 // ── Helper ────────────────────────────────────────────────────────────────────
