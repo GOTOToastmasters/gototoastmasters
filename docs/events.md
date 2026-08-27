@@ -4,16 +4,6 @@ _This page updates automatically from the meeting schedule._
 
 [→ Agenda for our next meeting on Easy-Speak](https://easy-speak.org/view_meeting.php?c=13017&show=next)
 
-## [Regular](https://www.eventbrite.com.au/e/goto-toastmasters-leadership-confidence-and-public-speaking-seminar-tickets-1990457933260)
-
-**Tuesday 25 August 2026** &nbsp;·&nbsp; 5:30 PM AEST &nbsp;·&nbsp; Melbourne CBD
-
-[Register on Eventbrite ↗](https://www.eventbrite.com.au/e/goto-toastmasters-leadership-confidence-and-public-speaking-seminar-tickets-1990457933260)
-
-[View agenda on Easy-Speak ↗](https://easy-speak.org/view_meeting.php?t=636314)
-
----
-
 ## [Regular](https://www.eventbrite.com.au/e/goto-toastmasters-leadership-confidence-and-public-speaking-seminar-tickets-1992685201078)
 
 **Tuesday 8 September 2026** &nbsp;·&nbsp; 5:30 PM AEST &nbsp;·&nbsp; Melbourne CBD
@@ -24,9 +14,11 @@ _This page updates automatically from the meeting schedule._
 
 ---
 
-## Regular
+## [Regular](https://www.eventbrite.com.au/e/goto-toastmasters-leadership-confidence-and-public-speaking-seminar-tickets-1998471961434)
 
 **Tuesday 13 October 2026** &nbsp;·&nbsp; 5:30 PM AEST &nbsp;·&nbsp; Melbourne CBD
+
+[Register on Eventbrite ↗](https://www.eventbrite.com.au/e/goto-toastmasters-leadership-confidence-and-public-speaking-seminar-tickets-1998471961434)
 
 [View agenda on Easy-Speak ↗](https://easy-speak.org/view_meeting.php?t=636316)
 
