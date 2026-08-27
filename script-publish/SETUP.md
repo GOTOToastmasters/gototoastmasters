@@ -16,29 +16,89 @@ clasp push
 
 ---
 
-## 2. Set Script Properties
+## 2. Authentication — the committee GitHub App
+
+The pipeline commits to GitHub as a **committee-owned GitHub App**, not as a personal
+access token. Commits land authored by `goto-publish-pipeline[bot]`. Installation tokens
+are minted per run and expire after an hour, so there is no standing credential anyone has
+to remember to rotate.
+
+Background: `docs/adr/0007-transfer-repo-to-committee-org.md` (Phase 3) records the
+decision; ADR-0006 is the tech debt it closed.
+
+> **The App already exists and is running.** Steps 2a–2b below are the one-time build-out,
+> kept for disaster recovery and for whoever inherits this. If you are only re-deploying
+> the script, skip to **2c**.
+
+### 2a. Create and install the App *(one-time — already done)*
+
+1. Org → **Settings → Developer settings → GitHub Apps → New GitHub App**, under the
+   `GOTOToastmasters` org.
+2. **Repository permissions → Contents: Read & write.** Everything else **None**.
+3. Untick **Webhook → Active** (the pipeline polls; it receives nothing).
+4. Note the **App ID**, then **Generate a private key** — this downloads a `.pem`.
+5. **Install** the App on the org, scoped to **only** the `gototoastmasters` repo. The
+   install URL ends `.../settings/installations/<INSTALL_ID>` — that number is the
+   **installation ID**.
+
+### 2b. Convert and store the private key *(the fiddly bit)*
+
+Two gotchas, both of which produce confusing failures if missed:
+
+- GitHub issues the key as **PKCS#1**; Apps Script needs **PKCS#8**.
+- Script Properties **flatten newlines to spaces**, which makes
+  `Utilities.computeRsaSha256Signature` throw `Invalid argument: key`. The key is
+  therefore stored **base64-encoded to a single line** and decoded at runtime.
+
+```bash
+# 1. PKCS#1 -> PKCS#8
+openssl pkcs8 -topk8 -inform PEM -outform PEM -nocrypt \
+  -in <app>.pem -out <app>-pkcs8.pem
+
+# 2. Flatten to one line — paste this output as GITHUB_APP_PRIVATE_KEY
+openssl base64 -A -in <app>-pkcs8.pem
+```
+
+### 2c. Set Script Properties
 
 In the Apps Script editor: **Project Settings → Script Properties → Add property**
 
-| Property            | Value                                                         |
-|---------------------|---------------------------------------------------------------|
-| `GITHUB_TOKEN`      | Fine-grained PAT: Contents **Read and Write** on the repo     |
-| `GITHUB_OWNER`      | `rkenefeck` (or whatever the GitHub username is)              |
-| `GITHUB_REPO`       | `gototoastmasters`                                            |
-| `GITHUB_BRANCH`     | `main`                                                        |
-| `MEETINGS_SS_ID`    | Spreadsheet ID holding the `Meetings` tab (drives the Events page) |
-| `EVENTBRITE_TOKEN`  | Eventbrite API token (optional — enables auto Eventbrite URL sync) |
-| `EVENTBRITE_ORG_ID` | Eventbrite organiser ID (optional; defaults to `111570638511`) |
+| Property                 | Value                                                              |
+|--------------------------|--------------------------------------------------------------------|
+| `GITHUB_APP_ID`          | The App ID from step 2a                                            |
+| `GITHUB_APP_INSTALL_ID`  | The installation ID from step 2a                                   |
+| `GITHUB_APP_PRIVATE_KEY` | PKCS#8 key, base64-encoded to a single line (step 2b)              |
+| `GITHUB_OWNER`           | `GOTOToastmasters` (the committee GitHub org)                      |
+| `GITHUB_REPO`            | `gototoastmasters`                                                 |
+| `GITHUB_BRANCH`          | `main`                                                             |
+| `MEETINGS_SS_ID`         | Spreadsheet ID holding the `Meetings` tab (drives the Events page) |
+| `EVENTBRITE_TOKEN`       | Eventbrite API token (optional — enables auto Eventbrite URL sync) |
+| `EVENTBRITE_ORG_ID`      | Eventbrite organiser ID (optional; defaults to `111570638511`)     |
 
-To create the fine-grained token: github.com → Settings → Developer settings →
-Personal access tokens → Fine-grained tokens → New token.
-Permissions: **Repository permissions → Contents → Read and Write**.
-Scope: Only the `gototoastmasters` repo.
+> **`GITHUB_TOKEN` is obsolete — do not re-add it.** The old no-expiry PAT was revoked and
+> the property deleted when the App took over. If you find yourself creating a PAT to make
+> this work, something else is wrong; fix that instead.
 
-> **Handover note:** the committee should create its **own** fine-grained PAT under a
-> committee-owned GitHub account and set it as `GITHUB_TOKEN`, so the pipeline no longer
-> depends on anyone else's credential. Give the token an expiry and rotate it per your
-> security policy.
+### 2d. Branch protection — the App needs a bypass
+
+The default branch has **"Require a pull request before merging"** enabled. The pipeline
+writes directly via the Contents API, which that rule rejects with:
+
+```
+GitHub API 409: Could not update file: Changes must be made through a pull request.
+```
+
+The App is registered as a bypass actor to allow this: repo → **Settings → Branches** →
+the default-branch rule → **"Allow specified actors to bypass required pull requests"** →
+add the publish App. **Re-enabling branch protection from scratch, or re-transferring the
+repo, will reproduce the 409** — re-add the bypass. (If the block is a *ruleset* rather
+than classic protection, the equivalent is Settings → Rules → Rulesets → the branch
+ruleset → Bypass list → Add bypass → GitHub Apps → mode Always.)
+
+The security trade-off this bypass implies is recorded in ADR-0007 → *Post-migration
+incident (2026-08-27)*. Short version: the App's private key and the committee Gmail
+account are now the effective controls on the live site, so key hygiene and 2FA matter
+more than they used to.
 
 `MEETINGS_SS_ID` is read at runtime (not hardcoded), so you can repoint the Events page
 to a different sheet by changing this property alone. The account the daily trigger runs
