@@ -6,6 +6,12 @@ site_url: 'https://gototoastmasters.com.au'
 copyright: |
   &copy; The information on this website is for the sole use of Toastmasters' members, for Toastmasters business only. It is not to be used for solicitation and distribution of non-Toastmasters material or information. All rights reserved. Toastmasters International, the Toastmasters International logo and all other Toastmasters International trademarks and copyrights are the sole property of Toastmasters International and may be used only by permission.
 docs_dir: docs/
+
+# Anything matched here is never built into the site and never enters the search
+# index — nav only controls the menu, so an unlisted page would otherwise still be
+# published at its URL. Keep internal material (ADRs, runbooks) listed here.
+exclude_docs: |
+  adr/
 nav:
   - Welcome: index.md
   - The Pitch: pitch.md
