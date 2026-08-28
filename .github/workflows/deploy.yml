@@ -11,6 +11,10 @@
 name: Deploy Site
 
 on:
+  # Manual trigger. Needed because a run that fails at startup (e.g. the Actions
+  # policy rejecting an action) cannot be re-run, and the push trigger below only
+  # fires on content paths — leaving no way to redeploy without a content change.
+  workflow_dispatch:
   pull_request:
   push:
     paths: 
