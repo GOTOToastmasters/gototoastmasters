@@ -962,6 +962,13 @@ function renderMemberManagement(m, invoice, onboarding, isLapsed) {
         </table>`;
     })()}
 
+    <!-- renderInvoiceEditor() writes here. Without this container it takes its
+         early-return guard and the Generate Invoice button silently does nothing,
+         which is exactly what happened for every renewing member. -->
+    <div id="invoice-editor">
+      <!-- Line item editor populated by renderInvoiceEditor() -->
+    </div>
+
     <div class="action-bar" style="margin-top:12px; padding-top:12px; border-top:1px solid var(--border)">
       ${!hasPaidDate
         ? `<button class="btn btn-primary btn-sm" onclick="markPaid('${esc(m.email)}')">Mark as Paid</button>`
