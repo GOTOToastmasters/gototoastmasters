@@ -777,6 +777,11 @@ function openMember(email) {
 // 'Approved' is what buildBadgeOrder() collects into the next order, so approving
 // here is what actually gets a badge made.
 
+// Member List Status values that never get a badge — mirrors
+// BADGE_EXCLUDED_MEMBER_STATUSES in Code.js. Kept client-side so the hub does not
+// offer a draft the server is going to refuse.
+const BADGE_EXCLUDED_MEMBER_STATUSES = ['Rejected', 'Prospect', 'Lapsed'];
+
 const BADGE_STATUS_DRAFT    = 'Draft Created';
 const BADGE_STATUS_APPROVED = 'Approved';
 const BADGE_STATUS_CHANGES  = 'Changes Requested';
@@ -833,19 +838,24 @@ function badgeActions(m) {
   const status  = badgeStatusOf(m);
   const approve = `<button class="btn btn-success btn-sm" onclick="approveBadge('${email}')">Approve</button>`;
   const changes = `<button class="btn btn-ghost btn-sm" onclick="requestBadgeChanges('${email}')">Request changes</button>`;
+  const draft   = label => `<button class="btn btn-primary btn-sm" onclick="draftBadge('${email}')">${label}</button>`;
   const note    = t => `<span style="font-size:.75rem;color:var(--muted)">${t}</span>`;
 
   if (status === BADGE_STATUS_ORDERED)  return note('Ordered — nothing to do');
-  if (status === BADGE_STATUS_CHANGES)  return note('Waiting on the next draft run');
   if (status === BADGE_STATUS_APPROVED) return changes;
   if (status === BADGE_STATUS_DRAFT)    return approve + ' ' + changes;
+  // A redraft no longer waits for someone to run the club-wide sweep.
+  if (status === BADGE_STATUS_CHANGES)  return draft('Draft again');
   if (isLegacyBadge(m)) {
     // The server will not approve these: with no status it cannot tell whether the
     // badge was already ordered, and approving would risk paying for a second one.
     return `<button class="btn btn-success btn-sm" disabled
         title="Predates the badge workflow — run the &quot;Backfill legacy badges&quot; setup step, or request changes to have it redrafted">Approve</button> ` + changes;
   }
-  return note('Not drafted yet');
+  if (BADGE_EXCLUDED_MEMBER_STATUSES.indexOf((m.status || '').toString().trim()) >= 0) {
+    return note(`${esc((m.status || '').toString().trim())} members do not get a badge`);
+  }
+  return draft('Draft &amp; email badge');
 }
 
 let _badgeFilter = BADGE_STATUS_DRAFT;
@@ -1120,6 +1130,27 @@ function renderMemberManagement(m, invoice, onboarding, isLapsed) {
     ? `<ul class="checklist">
         ${checklistSteps.map(step => {
           const done = onboarding[step.key] || (step.key === 'onboarding_complete' && m.onboarding_complete);
+
+          // The badge step is not a thing anyone ticks: it is a four-stage workflow with
+          // its own state on Member List. Show where the badge actually is, and leave the
+          // controls to the Badge section above rather than repeating them here. Without
+          // the badge columns it stays an ordinary tick-box.
+          if (step.key === 'badge_made' && badgeColumnsPresent()) {
+            const bs = badgeStatusOf(m);
+            const stage = {
+              [BADGE_STATUS_DRAFT]:    'Badge drafted — awaiting their reply',
+              [BADGE_STATUS_CHANGES]:  'Badge changes requested — needs redrafting',
+              [BADGE_STATUS_APPROVED]: 'Badge approved — waiting on the next order',
+              [BADGE_STATUS_ORDERED]:  'Badge ordered',
+            }[bs] || (isLegacyBadge(m) ? 'Badge made before the workflow' : 'Badge not drafted yet');
+            const at = done || (bs === BADGE_STATUS_APPROVED && m.badge_approved) || m.badge_sent;
+            return `<li>
+              <span class="check-icon">${done || bs === BADGE_STATUS_ORDERED ? '✅' : '⬜'}</span>
+              <span class="check-label">${stage}</span>
+              <span class="check-date">${at ? fmtDate(at) : ''}</span>
+            </li>`;
+          }
+
           return `<li>
             <span class="check-icon">${done ? '✅' : '⬜'}</span>
             <span class="check-label">${step.label}</span>
@@ -1606,6 +1637,62 @@ async function saveAmendedInvoice(email) {
 }
 
 // ─── BADGE WORKFLOW ──────────────────────────────────────────────────────────
+
+/**
+ * Drafts one member's badge and emails it to them for review.
+ *
+ * Asks the server what the badge would print before committing to it. The printed
+ * name is Preferred Name if there is one and the formal First name otherwise, and a
+ * blank Preferred Name is invisible in the hub's normal views — so without this step
+ * the first sight of a wrong name is the member's reply to an email already sent.
+ */
+async function draftBadge(email) {
+  showLoading('Checking what the badge will print…');
+  let preview;
+  try {
+    const result = await hubPost({ action: 'previewBadge', memberEmail: email });
+    if (result.error) throw new Error(result.error);
+    preview = result.preview || {};
+  } catch (err) {
+    hideLoading();
+    showError('Could not read the badge details: ' + err.message);
+    return;
+  }
+  hideLoading();
+
+  if (!preview.eligible) {
+    showError(`Cannot draft a badge: ${preview.reason || 'this member is not due one'}.`);
+    return;
+  }
+
+  const lines = [
+    `Draft a badge for ${email}?`,
+    '',
+    'It will print:',
+    `        ${preview.name}`,
+    `        ${preview.title}`,
+    '',
+  ];
+  if (!preview.usingPreferredName) {
+    lines.push('This member has no Preferred Name, so their formal first name is used.',
+               'Set Preferred Name on Member List first if that is not what they go by.',
+               '');
+  }
+  lines.push('The badge is emailed to them for review as soon as you confirm.');
+  if (!confirm(lines.join('\n'))) return;
+
+  showLoading('Drafting and emailing the badge…');
+  try {
+    const result = await hubPost({ action: 'draftBadge', memberEmail: email });
+    if (result.error) throw new Error(result.error);
+    await refreshData();
+    if (currentView === 'member-detail') openMember(email);
+    showToast(result.message || 'Badge drafted and emailed for review.');
+  } catch (err) {
+    hideLoading();
+    showError('Failed to draft badge: ' + err.message);
+  }
+}
 
 async function approveBadge(email) {
   if (!confirm(`Approve the badge for ${email}?\n\nIt will be included in the next badge order.`)) return;
