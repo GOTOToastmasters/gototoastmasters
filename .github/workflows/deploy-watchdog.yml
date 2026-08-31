@@ -1,0 +1,158 @@
+# Notices when the site stops deploying.
+#
+# The site once went a month without deploying and nobody knew. Every run ended in
+# `startup_failure` — the Actions policy left at `local_only` after the org transfer
+# rejected `actions/checkout` and `actions/setup-python` before the job ever started. No
+# build log, no annotation, nothing to read. Meanwhile the publish pipeline kept committing
+# content successfully, because its job ends at the commit.
+#
+# ─── Why this workflow uses no actions at all ────────────────────────────────────────
+#
+# Every step below is a plain `run:` using the `gh` CLI, which is preinstalled on the
+# runner. There is deliberately not one `uses:` line.
+#
+# That is the whole point. `startup_failure` happens when a workflow cannot resolve its
+# actions — so a watchdog built out of actions can be killed by the exact condition it
+# exists to detect, and would fail the same way, just as quietly. This one has nothing to
+# resolve, so an Actions policy that blocks third-party actions cannot stop it starting.
+#
+# It also means no checkout, which is why the logic is inline rather than in a script file.
+# .github/scripts is unreachable without actions/checkout. The inline copy is what
+# .github/test-deploy-watchdog.sh extracts and tests, so the two cannot drift.
+#
+# ─── What it cannot catch ────────────────────────────────────────────────────────────
+#
+# Its own absence. GitHub disables scheduled workflows in a repository with no activity for
+# 60 days, and a disabled cron is silent like everything else here. This repo commits most
+# days, so that is unlikely rather than impossible — but it is the reason this is a
+# reduction in risk, not a guarantee.
+
+name: Deploy watchdog
+
+on:
+  schedule:
+    # Daily, at an unremarkable minute — on-the-hour crons are the most contended and the
+    # most likely to be delayed by GitHub.
+    - cron: '17 22 * * *'
+  workflow_dispatch:
+
+permissions:
+  actions: read      # read deploy.yml's run history, including startup_failure
+  contents: read     # read the gh-pages branch head
+  issues: write      # raise and resolve the alert
+
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    env:
+      GH_TOKEN:           ${{ github.token }}
+      REPO:               ${{ github.repository }}
+      DEPLOY_WORKFLOW:    deploy.yml
+      PAGES_BRANCH:       gh-pages
+      # Generous on purpose. These catch "this has stopped", not "this is late". A
+      # threshold tight enough to flag a quiet fortnight would cry wolf, and an alert
+      # people learn to skim past is worse than no alert.
+      MAX_PAGES_AGE_DAYS: '14'
+      MAX_RUN_GAP_DAYS:   '14'
+      ISSUE_LABEL:        deploy-watchdog
+
+    steps:
+      - name: Check deploy health
+        run: |
+          set -uo pipefail
+          problems=()
+          now=$(date -u +%s)
+          age_days() { echo $(( ( now - $(date -u -d "$1" +%s) ) / 86400 )); }
+
+          # ── 1. Is the published site fresh? ────────────────────────────────────────
+          # Catches the case that has no failing run to find: a deploy that never ran at
+          # all looks exactly like a quiet week from the runs API.
+          pages_date=$(gh api "repos/$REPO/branches/$PAGES_BRANCH" \
+                         --jq '.commit.commit.committer.date' 2>/dev/null || true)
+          if [[ -z "$pages_date" ]]; then
+            problems+=("The \`$PAGES_BRANCH\` branch could not be read. It may have been deleted — the live site is served from it.")
+          else
+            pages_age=$(age_days "$pages_date")
+            echo "gh-pages last commit: $pages_date (${pages_age}d ago)"
+            if (( pages_age > MAX_PAGES_AGE_DAYS )); then
+              problems+=("The live site has not been rebuilt for **${pages_age} days** (\`$PAGES_BRANCH\` last committed $pages_date, threshold ${MAX_PAGES_AGE_DAYS}d). Visitors are being served stale content.")
+            fi
+          fi
+
+          # ── 2. How did the last deploy end? ────────────────────────────────────────
+          # startup_failure is the one that matters and the one a build-failure check
+          # misses: it happens before there is a build, so it produces no log to read.
+          runs=$(gh api "repos/$REPO/actions/workflows/$DEPLOY_WORKFLOW/runs?per_page=10" 2>/dev/null || true)
+          last=$(jq -r '.workflow_runs[0] // empty' <<<"${runs:-{\}}" 2>/dev/null || true)
+
+          if [[ -z "$last" ]]; then
+            problems+=("No runs of \`$DEPLOY_WORKFLOW\` were found at all. The workflow may have been renamed, disabled, or removed.")
+          else
+            concl=$(jq -r '.conclusion // .status' <<<"$last")
+            when=$(jq -r '.created_at'  <<<"$last")
+            url=$(jq  -r '.html_url'    <<<"$last")
+            gap=$(age_days "$when")
+            echo "last $DEPLOY_WORKFLOW run: $concl at $when (${gap}d ago)"
+
+            case "$concl" in
+              success|in_progress|queued|"") : ;;
+              startup_failure)
+                problems+=("The last \`$DEPLOY_WORKFLOW\` run ended in **startup_failure** ($when). The job never started, so there is no build log to read — check the repository's Actions policy first, which is what caused this before. [Run]($url)")
+                ;;
+              *)
+                problems+=("The last \`$DEPLOY_WORKFLOW\` run ended in **$concl** ($when). [Run]($url)")
+                ;;
+            esac
+
+            if (( gap > MAX_RUN_GAP_DAYS )); then
+              problems+=("\`$DEPLOY_WORKFLOW\` has not run for **${gap} days** (threshold ${MAX_RUN_GAP_DAYS}d). Note its \`push\` trigger only fires on \`docs/**\`, \`mkdocs.yml\` and \`theme/**\`.")
+            fi
+          fi
+
+          # ── 3. Raise, or stand down ────────────────────────────────────────────────
+          # One open issue at a time, closed automatically when things recover. That keeps
+          # this to a single notification per incident rather than one per day: a daily
+          # alert earns a filter rule, and then the real one is filtered with it.
+          existing=$(gh issue list --repo "$REPO" --state open --label "$ISSUE_LABEL" \
+                       --json number --jq '.[0].number // empty' 2>/dev/null || true)
+
+          if (( ${#problems[@]} == 0 )); then
+            echo "All healthy."
+            if [[ -n "$existing" ]]; then
+              gh issue comment "$existing" --repo "$REPO" \
+                --body "Recovered. The site is deploying again and \`$PAGES_BRANCH\` is fresh as of $(date -u +%Y-%m-%dT%H:%MZ). Closing automatically."
+              gh issue close "$existing" --repo "$REPO"
+              echo "Closed #$existing."
+            fi
+            exit 0
+          fi
+
+          printf 'PROBLEMS:\n'; printf '  - %s\n' "${problems[@]}"
+
+          body=$'The deploy watchdog found problems.\n\n'
+          for p in "${problems[@]}"; do body+="- $p"$'\n'; done
+          body+=$'\nEvery component can report success while the site goes stale — the publish\n'
+          body+=$'pipeline\'s job ends at the commit, so it succeeds whether or not the site\n'
+          body+=$'ever builds. That is why this check exists.\n\n'
+          body+="_Raised automatically by \`deploy-watchdog.yml\`. It closes itself when the problem clears._"
+
+          if [[ -n "$existing" ]]; then
+            # Already reported. Say nothing further — the open issue is the alert, and a
+            # daily "still broken" comment is how an alert becomes noise.
+            echo "Already tracked in #$existing; not commenting again."
+          else
+            # Create the label if it is missing. `gh issue create --label` fails outright on
+            # an unknown label, which would mean the alarm cannot fire — precisely the class
+            # of silent breakage this workflow exists to catch.
+            gh label create "$ISSUE_LABEL" --repo "$REPO" --color B60205 \
+              --description "Raised automatically when the site stops deploying" 2>/dev/null || true
+
+            gh issue create --repo "$REPO" \
+              --title "Site is not deploying" \
+              --label "$ISSUE_LABEL" \
+              --body "$body" \
+              || gh issue create --repo "$REPO" --title "Site is not deploying" --body "$body"
+          fi
+
+          # Fail the run too, so the workflow list shows red alongside the issue.
+          exit 1
