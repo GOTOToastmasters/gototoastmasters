@@ -39,6 +39,30 @@ var PUBLISH_ALLOWLIST = {
 // produces changes — the audit safeguard per ADR 0002).
 var NOTIFY_EMAIL = 'goto.toastmasters.committee@gmail.com';
 
+// How long the pipeline may run without saying anything at all before it sends a
+// "still here" note.
+//
+// Why this exists: notifications are sent only when a run publishes something or hits an
+// error. That is the right default — nobody wants a daily "nothing happened" email, and an
+// inbox that gets one grows a filter rule, after which the email that DOES carry an error
+// is filtered along with it. But it leaves a healthy pipeline completely silent, and
+// silence is also what a dead pipeline produces.
+//
+// That ambiguity is not hypothetical here. Notifications stopped after 2026-08-15 and were
+// reported as a fault; they had simply gone quiet because nothing was changing and nothing
+// was failing. Meanwhile the site itself had not deployed for a month, and the absence of
+// these emails was the only thing that might have hinted at it.
+//
+// So: email on news as before, plus at most one heartbeat per period when there is no news.
+// A busy pipeline sends nothing extra. A quiet one sends twelve a year.
+//
+// This does NOT make a human responsible for noticing a missing email — that is a job for
+// the scheduled staleness check (see the site deploy monitoring issue), which watches from
+// outside Apps Script and so survives the migrations that orphan triggers. This is the
+// cheap half: it makes the pipeline's own liveness observable at all.
+var QUIET_HEARTBEAT_DAYS = 30;
+var LAST_NOTIFY_PROP     = 'LAST_NOTIFY_MS';
+
 // ── Entry points ──────────────────────────────────────────────────────────────
 
 /**
@@ -121,7 +145,7 @@ function publishAll() {
 
   console.log('=== publishAll complete. ' + changed + ' published, ' + errors.length + ' error(s) ===');
 
-  if (changed > 0 || errors.length > 0) {
+  if (changed > 0 || errors.length > 0 || heartbeatIsDue_()) {
     notifyCommittee_(changed, errors);
   }
 }
@@ -668,6 +692,24 @@ function commitToGitHub_(repoPath, content, message) {
  * Email the committee account with a publish summary.
  * This is the audit safeguard — an unexpected publish is noticed immediately.
  */
+/**
+ * True when the pipeline has gone QUIET_HEARTBEAT_DAYS without sending anything.
+ *
+ * "Anything" means any notification, not just a heartbeat — a run that reports real
+ * changes resets the clock, because it has already proved the pipeline is alive. That is
+ * what keeps this from adding volume to a busy pipeline.
+ *
+ * Never having sent at all also counts as due, so the first quiet run after this ships
+ * establishes the baseline rather than waiting a month to start counting.
+ */
+function heartbeatIsDue_() {
+  var last = PropertiesService.getScriptProperties().getProperty(LAST_NOTIFY_PROP);
+  if (!last) return true;
+  var lastMs = parseInt(last, 10);
+  if (isNaN(lastMs)) return true;
+  return (Date.now() - lastMs) >= QUIET_HEARTBEAT_DAYS * 24 * 60 * 60 * 1000;
+}
+
 function notifyCommittee_(numChanged, errors) {
   var props  = PropertiesService.getScriptProperties();
   var owner  = props.getProperty('GITHUB_OWNER') || '';
@@ -676,11 +718,29 @@ function notifyCommittee_(numChanged, errors) {
     ? 'https://github.com/' + owner + '/' + repo + '/commits/main'
     : '(repo not configured)';
 
-  var subject = '[GOTO site] ' + numChanged + ' page(s) auto-published';
-  var body    = numChanged + ' page(s) were automatically published to gototoastmasters.com.au.\n\n' +
-                'Review commits: ' + repoUrl + '\n';
+  var hasErrors   = !!(errors && errors.length > 0);
+  var isHeartbeat = (numChanged === 0 && !hasErrors);
 
-  if (errors && errors.length > 0) {
+  var subject, body;
+
+  if (isHeartbeat) {
+    // Deliberately not phrased as "0 pages published", which reads like a failure report
+    // for a run that did nothing wrong. The point of this email is the pipeline's own
+    // existence, so that is what it says.
+    subject = '[GOTO site] publish pipeline still running — nothing to report';
+    body    = 'The publish pipeline has run normally for the last ' + QUIET_HEARTBEAT_DAYS +
+              ' days with nothing to publish and no errors.\n\n' +
+              'This note exists so that a working pipeline is not silent. Silence is also\n' +
+              'what a stopped one produces, and telling those apart after the fact has\n' +
+              'already cost this project a month.\n\n' +
+              'Nothing needs doing. Recent commits: ' + repoUrl + '\n';
+  } else {
+    subject = '[GOTO site] ' + numChanged + ' page(s) auto-published';
+    body    = numChanged + ' page(s) were automatically published to gototoastmasters.com.au.\n\n' +
+              'Review commits: ' + repoUrl + '\n';
+  }
+
+  if (hasErrors) {
     body += '\nErrors (' + errors.length + '):\n' +
             errors.map(function(e) { return '  - ' + e; }).join('\n') + '\n';
   }
@@ -689,6 +749,9 @@ function notifyCommittee_(numChanged, errors) {
 
   try {
     GmailApp.sendEmail(NOTIFY_EMAIL, subject, body);
+    // Only a delivered email resets the quiet clock. If the send throws, the next run
+    // tries again rather than assuming the committee heard something they did not.
+    props.setProperty(LAST_NOTIFY_PROP, String(Date.now()));
   } catch (e) {
     console.log('Failed to send notification email: ' + e.message);
   }

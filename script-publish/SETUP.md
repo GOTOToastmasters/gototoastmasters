@@ -156,7 +156,35 @@ Check:
 - The committee email received a notification
 - The site builds and deploys correctly (GitHub Actions)
 
+Note that the notification only arrives if the run actually published something or hit an
+error. A run that finds nothing to do is silent by design — see *When the pipeline emails
+you* below. Modify one of the allowlisted Docs first if you want to see the email.
+
 ---
+
+## When the pipeline emails you
+
+Three cases, and only three:
+
+| Situation | Email |
+|---|---|
+| A run published one or more pages | yes — the usual summary |
+| A run hit an error | yes — with the error detail |
+| Nothing changed and nothing failed | no, **except** once every `QUIET_HEARTBEAT_DAYS` (30) |
+
+The heartbeat exists because a healthy pipeline and a dead one both produce silence. This
+is not theoretical: notifications stopped on 2026-08-15 and were reported as a fault, when
+in fact nothing had been changing and nothing had been failing. At the same time the site
+itself had not deployed for a month.
+
+Any email resets the clock, so a pipeline doing real work never sends the heartbeat at all.
+A quiet one sends twelve a year — few enough to stay readable, which is the whole point. An
+"all clear" email that arrives daily earns a filter rule, and then the one carrying a real
+error is filtered with it.
+
+**This does not make anyone responsible for noticing an email that failed to arrive.**
+Detecting absence is a job for the scheduled staleness check that watches from outside
+Apps Script; the heartbeat only makes the pipeline's liveness observable in the first place.
 
 ## Notes
 
