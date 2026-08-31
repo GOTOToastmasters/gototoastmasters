@@ -207,6 +207,14 @@
     .pill-rejected  { background: #f3f4f6; color: #374151; }
     .pill-review    { background: #fce7f3; color: #9d174d; }
 
+    /* Badge workflow statuses (Member List → Badge Status) */
+    .pill-badge-draft    { background: #fef3c7; color: #92400e; }
+    .pill-badge-approved { background: #d1fae5; color: #065f46; }
+    .pill-badge-changes  { background: #fce7f3; color: #9d174d; }
+    .pill-badge-ordered  { background: #dbeafe; color: #1e40af; }
+    .pill-badge-legacy   { background: #ede9fe; color: #5b21b6; }
+    .pill-badge-none     { background: #f3f4f6; color: #374151; }
+
     /* ── Member detail ─────────────────────────────── */
     .detail-grid {
       display: grid;
@@ -424,6 +432,10 @@
       <span>Members</span>
       <span class="badge" id="badge-prospects" style="display:none">0</span>
     </a>
+    <a class="nav-link" onclick="showView('badges')" id="nav-badges">
+      <span>Badges</span>
+      <span class="badge" id="badge-badges" style="display:none">0</span>
+    </a>
     <a class="nav-link" onclick="showView('dietary')" id="nav-dietary">
       <span>Dietary</span>
     </a>
@@ -611,6 +623,7 @@ function showView(view, data) {
     case 'dashboard':   main.innerHTML = renderDashboard();   break;
     case 'members':     main.innerHTML = renderMembers();     break;
     case 'member-detail': main.innerHTML = renderMemberDetail(data); break;
+    case 'badges':      main.innerHTML = renderBadges();      break;
     case 'dietary':     main.innerHTML = renderDietary();     break;
     case 'education':   main.innerHTML = renderEducation();   break;
     case 'errors':      main.innerHTML = renderErrors();      break;
@@ -666,6 +679,11 @@ function renderDashboard() {
           <div class="tile-count">${lapsingSoon.length}</div>
           <div class="tile-label">Expiring within 6 weeks</div>
         </div>
+        ${badgeColumnsPresent() ? `
+        <div class="tile ${badgesAwaitingApproval().length ? 'warn' : ''}" onclick="filterBadges('Draft Created')">
+          <div class="tile-count">${badgesAwaitingApproval().length}</div>
+          <div class="tile-label">Badges awaiting approval</div>
+        </div>` : ''}
         <div class="tile ${errorsUnread.length ? 'alert' : ''}" onclick="showView('errors')">
           <div class="tile-count">${errorsUnread.length}</div>
           <div class="tile-label">Unread errors</div>
@@ -743,6 +761,182 @@ function openMember(email) {
   const member = memberList.find(m => (m.email || '') === email);
   if (!member) return;
   showView('member-detail', { member });
+}
+
+// ══════════════════════════════════════════════════════════════════════════════
+// BADGES
+// ══════════════════════════════════════════════════════════════════════════════
+//
+// Badges are drafted and emailed to the member from the Apps Script menu
+// (GOTO → Badges), which sets Badge Status = 'Draft Created'. The member replies,
+// and the committee records that reply here:
+//
+//   blank → Draft Created → Approved → Ordered
+//                        ↘ Changes Requested → (redrafted) → Draft Created
+//
+// 'Approved' is what buildBadgeOrder() collects into the next order, so approving
+// here is what actually gets a badge made.
+
+const BADGE_STATUS_DRAFT    = 'Draft Created';
+const BADGE_STATUS_APPROVED = 'Approved';
+const BADGE_STATUS_CHANGES  = 'Changes Requested';
+const BADGE_STATUS_ORDERED  = 'Ordered';
+
+/**
+ * True once addBadgeWorkflowColumns() has been run against Member List.
+ * The server refuses to write badge state without those columns rather than
+ * risk writing to the wrong one, so the UI hides the workflow instead of
+ * offering buttons that cannot work.
+ */
+function badgeColumnsPresent() {
+  const norms = memberHeaders.map(h => String(h).replace(/\W+/g, '_').toLowerCase());
+  return norms.includes('badge_status') && norms.includes('badgeuri');
+}
+
+function badgeStatusOf(m) { return (m.badge_status || '').toString().trim(); }
+function badgeUriOf(m)    { return (m.badgeuri     || '').toString().trim(); }
+
+/** Artwork but no status: drafted before the workflow existed. */
+function isLegacyBadge(m) { return !badgeStatusOf(m) && !!badgeUriOf(m); }
+
+function badgesAwaitingApproval() {
+  return memberList.filter(m => badgeStatusOf(m) === BADGE_STATUS_DRAFT);
+}
+
+function badgePill(m) {
+  const s = badgeStatusOf(m);
+  if (!s) return isLegacyBadge(m)
+    ? '<span class="pill pill-badge-legacy">Pre-workflow</span>'
+    : '<span class="pill pill-badge-none">Not drafted</span>';
+  const cls = {
+    [BADGE_STATUS_DRAFT]:    'pill-badge-draft',
+    [BADGE_STATUS_APPROVED]: 'pill-badge-approved',
+    [BADGE_STATUS_CHANGES]:  'pill-badge-changes',
+    [BADGE_STATUS_ORDERED]:  'pill-badge-ordered',
+  }[s] || 'pill-badge-none';
+  return `<span class="pill ${cls}">${esc(s)}</span>`;
+}
+
+function badgeArtworkLink(m, label) {
+  const uri = badgeUriOf(m);
+  if (!uri) return '<span style="color:var(--muted)">—</span>';
+  return `<a href="${esc(uri)}" target="_blank" rel="noopener">${label || 'View badge →'}</a>`;
+}
+
+/**
+ * The buttons available for one member, matched to what the server will accept
+ * (hub.js: hubApproveBadge_ / hubRequestBadgeChanges_). Anything the server
+ * would reject is shown as a disabled button or a note, not offered and refused.
+ */
+function badgeActions(m) {
+  const email   = esc(m.email || '');
+  const status  = badgeStatusOf(m);
+  const approve = `<button class="btn btn-success btn-sm" onclick="approveBadge('${email}')">Approve</button>`;
+  const changes = `<button class="btn btn-ghost btn-sm" onclick="requestBadgeChanges('${email}')">Request changes</button>`;
+  const note    = t => `<span style="font-size:.75rem;color:var(--muted)">${t}</span>`;
+
+  if (status === BADGE_STATUS_ORDERED)  return note('Ordered — nothing to do');
+  if (status === BADGE_STATUS_CHANGES)  return note('Waiting on the next draft run');
+  if (status === BADGE_STATUS_APPROVED) return changes;
+  if (status === BADGE_STATUS_DRAFT)    return approve + ' ' + changes;
+  if (isLegacyBadge(m)) {
+    // The server will not approve these: with no status it cannot tell whether the
+    // badge was already ordered, and approving would risk paying for a second one.
+    return `<button class="btn btn-success btn-sm" disabled
+        title="Predates the badge workflow — run the &quot;Backfill legacy badges&quot; setup step, or request changes to have it redrafted">Approve</button> ` + changes;
+  }
+  return note('Not drafted yet');
+}
+
+let _badgeFilter = BADGE_STATUS_DRAFT;
+function filterBadges(status) { _badgeFilter = status; showView('badges'); }
+
+function renderBadges() {
+  if (!badgeColumnsPresent()) {
+    return `
+      <div class="card">
+        <h2>Badges</h2>
+        <div class="alert alert-info">
+          The badge workflow columns are not on <strong>Member List</strong> yet, so there is
+          nothing to approve here. Run <code>addBadgeWorkflowColumns()</code> once from the
+          Apps Script editor (Extensions → Apps Script), then refresh this page.
+        </div>
+      </div>`;
+  }
+
+  const filters = [
+    { key: BADGE_STATUS_DRAFT,    label: 'Awaiting approval' },
+    { key: BADGE_STATUS_APPROVED, label: 'Approved — to order' },
+    { key: BADGE_STATUS_CHANGES,  label: 'Changes requested' },
+    { key: BADGE_STATUS_ORDERED,  label: 'Ordered' },
+    { key: 'legacy',              label: 'Pre-workflow' },
+    { key: 'none',                label: 'Not drafted' },
+    { key: '',                    label: 'All badges' },
+  ];
+
+  const matches = m => {
+    if (_badgeFilter === 'legacy') return isLegacyBadge(m);
+    if (_badgeFilter === 'none')   return !badgeStatusOf(m) && !badgeUriOf(m) && norm(m.status) === 'active';
+    if (_badgeFilter === '')       return !!badgeStatusOf(m) || !!badgeUriOf(m);
+    return badgeStatusOf(m) === _badgeFilter;
+  };
+
+  // Oldest draft first: the member who has been waiting longest is worked first.
+  const rows = memberList.filter(matches).sort((a, b) => {
+    const da = new Date(a.badge_sent || 0).getTime() || 0;
+    const db = new Date(b.badge_sent || 0).getTime() || 0;
+    return da - db;
+  });
+
+  const counts = {};
+  filters.forEach(f => {
+    const saved = _badgeFilter;
+    _badgeFilter = f.key;
+    counts[f.key] = memberList.filter(matches).length;
+    _badgeFilter = saved;
+  });
+
+  const rowsHtml = rows.map(m => {
+    const name = m.invoicename || ((m.first || '') + ' ' + (m.last || '')).trim();
+    return `<tr>
+      <td><a href="#" onclick="openMember('${esc(m.email || '')}'); return false;">${esc(name)}</a></td>
+      <td><a href="mailto:${esc(m.email)}">${esc(m.email || '')}</a></td>
+      <td>${badgePill(m)}</td>
+      <td>${m.badge_sent ? fmtDate(m.badge_sent) : '—'}</td>
+      <td>${m.badge_approved ? fmtDate(m.badge_approved) : '—'}</td>
+      <td>${esc(String(m.badge_order_id || '')) || '—'}</td>
+      <td>${badgeArtworkLink(m)}</td>
+      <td style="white-space:nowrap">${badgeActions(m)}</td>
+    </tr>`;
+  }).join('');
+
+  const activeLabel = (filters.find(f => f.key === _badgeFilter) || filters[0]).label;
+
+  return `
+    <div class="card">
+      <h2>Badges <span style="font-weight:400; color:var(--muted);">${esc(activeLabel)} (${rows.length})</span></h2>
+      <p style="color:var(--muted);font-size:.8rem;margin-bottom:16px">
+        Members are emailed their badge for review from the Apps Script menu
+        (GOTO → Badges). Record their reply here: <strong>Approve</strong> puts the badge
+        into the next order, <strong>Request changes</strong> sends it back to be redrafted.
+      </p>
+      <div class="filter-bar">
+        <select onchange="filterBadges(this.value)">
+          ${filters.map(f => `<option value="${esc(f.key)}" ${f.key === _badgeFilter ? 'selected' : ''}>${f.label} (${counts[f.key]})</option>`).join('')}
+        </select>
+        <div class="spacer"></div>
+        <button class="btn btn-ghost btn-sm" onclick="refreshData()">↻ Refresh</button>
+      </div>
+      <div style="overflow-x:auto">
+        <table>
+          <thead><tr>
+            <th>Name</th><th>Email</th><th>Badge</th><th>Drafted</th>
+            <th>Approved</th><th>Order</th><th>Artwork</th><th>Action</th>
+          </tr></thead>
+          <tbody>${rowsHtml || `<tr><td colspan="8" style="color:var(--muted);text-align:center;padding:24px">Nothing under &ldquo;${esc(activeLabel)}&rdquo;.</td></tr>`}</tbody>
+        </table>
+      </div>
+    </div>`;
 }
 
 // ══════════════════════════════════════════════════════════════════════════════
@@ -901,6 +1095,27 @@ function renderMemberManagement(m, invoice, onboarding, isLapsed) {
     { key: 'onboarding_complete',        label: 'Onboarding complete',       col: 'Onboarding Complete' },
   ];
 
+  // Badge review. Hidden entirely until Member List carries the badge columns —
+  // see badgeColumnsPresent().
+  const badgeSectionHtml = badgeColumnsPresent() ? `
+    <div class="section-title">Badge</div>
+    <div class="detail-grid">
+      <div class="field-row">
+        <label>Status</label>
+        <div class="value">${badgePill(m)}</div>
+      </div>
+      <div class="field-row">
+        <label>Artwork</label>
+        <div class="value">${badgeArtworkLink(m, 'View drafted badge →')}</div>
+      </div>
+      ${fieldRow('Drafted &amp; sent', m.badge_sent ? fmtDate(m.badge_sent) : '—', null)}
+      ${fieldRow('Approved', m.badge_approved ? fmtDate(m.badge_approved) : '—', null)}
+      ${m.badge_order_id
+        ? fieldRow('Order ID', String(m.badge_order_id), String(m.badge_order_id))
+        : ''}
+    </div>
+    <div class="action-bar" style="margin-top:12px">${badgeActions(m)}</div>` : '';
+
   const checklistHtml = hasPaidDate
     ? `<ul class="checklist">
         ${checklistSteps.map(step => {
@@ -985,6 +1200,8 @@ function renderMemberManagement(m, invoice, onboarding, isLapsed) {
       <div class="spacer"></div>
       <button class="btn btn-ghost btn-sm" onclick="generateInvoiceFlow('${esc(m.email)}')">Generate Invoice</button>
     </div>
+
+    ${badgeSectionHtml}
 
     <div class="section-title">Onboarding Checklist</div>
     ${checklistHtml}`;
@@ -1388,6 +1605,46 @@ async function saveAmendedInvoice(email) {
   }
 }
 
+// ─── BADGE WORKFLOW ──────────────────────────────────────────────────────────
+
+async function approveBadge(email) {
+  if (!confirm(`Approve the badge for ${email}?\n\nIt will be included in the next badge order.`)) return;
+  showLoading('Approving badge…');
+  try {
+    const result = await hubPost({ action: 'approveBadge', memberEmail: email });
+    if (result.error) throw new Error(result.error);
+    await refreshData();
+    if (currentView === 'member-detail') openMember(email);
+    showToast(result.message || 'Badge approved.');
+  } catch (err) {
+    hideLoading();
+    showError('Failed to approve badge: ' + err.message);
+  }
+}
+
+async function requestBadgeChanges(email) {
+  const notes = prompt(
+    `What needs to change on the badge for ${email}?\n\n` +
+    'This goes in the audit log. The badge is cleared and redrafted on the next ' +
+    'run of GOTO → Badges.');
+  if (notes === null) return;                       // cancelled
+  if (!notes.trim()) {
+    showToast('Say what needs changing so the redraft is actionable.', 'info');
+    return;
+  }
+  showLoading('Sending badge back…');
+  try {
+    const result = await hubPost({ action: 'requestBadgeChanges', memberEmail: email, notes: notes.trim() });
+    if (result.error) throw new Error(result.error);
+    await refreshData();
+    if (currentView === 'member-detail') openMember(email);
+    showToast(result.message || 'Badge sent back for redrafting.');
+  } catch (err) {
+    hideLoading();
+    showError('Failed to request changes: ' + err.message);
+  }
+}
+
 async function dismissError(rowNumber) {
   showLoading('Dismissing…');
   try {
@@ -1525,10 +1782,13 @@ function showError(msg) {
 function updateBadges() {
   const prospects   = memberList.filter(m => norm(m.status) === 'prospect').length;
   const errorsUnread = errorsList.filter(e => !e.reviewed_by).length;
+  const awaitingBadges = badgeColumnsPresent() ? badgesAwaitingApproval().length : 0;
   const bP = document.getElementById('badge-prospects');
   const bE = document.getElementById('badge-errors');
+  const bB = document.getElementById('badge-badges');
   if (bP) { bP.textContent = prospects;    bP.style.display = prospects   ? '' : 'none'; }
   if (bE) { bE.textContent = errorsUnread; bE.style.display = errorsUnread ? '' : 'none'; }
+  if (bB) { bB.textContent = awaitingBadges; bB.style.display = awaitingBadges ? '' : 'none'; }
 }
 </script>
 
