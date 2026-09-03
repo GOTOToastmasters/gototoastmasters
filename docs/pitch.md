@@ -69,11 +69,13 @@ One or more of the following to meet membership criteria for this Toastmasters c
 #### Initial
 
 Initial membership **$45 signup fee** (People with existing toastmasters international IDs this fee will be waved)
+
 Initial **6 months** (5 formal meals + minimum 2 special events)  : **$340 + $45**
+
 Initial **12 months** (10 formal meals + minimum 4 special events): **$680 + $45**
  (If you would like to invoice your current employer, a yearly membership may be easier)
 
-Your Toastmasters International membership will be paid until the next Toastmasters International renewal period (end of March or September) 6 or 12 months rounded down, remainder will be credited towards your first renewal
+Your Toastmasters International membership will be paid until the next Toastmasters International renewal period (end of March or September), with each adhoc month costing **$65**
 
 #### Renewal
 
@@ -83,7 +85,7 @@ Renewal 12 months(10 formal meals + minimum 4 special event) : $680
 
 ### What do I need to do to get involved
 
-If you would like to commit or simply register your interest, please respond to our google form [GOTO Toastmasters Signup Form](gototoastmaster.com.au/Join)
+If you would like to commit or simply register your interest, please respond to our google form [GOTO Toastmasters Signup Form](https://gototoastmaster.com.au/Join)
 
 ### What if I want to come along as a guest and check it out
 
