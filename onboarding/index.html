@@ -1,0 +1,1883 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>GOTO Toastmasters — Committee Hub</title>
+  <link rel="icon" href="https://ccdn.toastmasters.org/medias/files/brand-materials/loyal-blue-masthead-logo.png">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link href="https://fonts.googleapis.com/css2?family=Montserrat:wght@400;500;600;700&display=swap" rel="stylesheet">
+
+  <!-- Google Identity Services (ID token / One Tap) -->
+  <script src="https://accounts.google.com/gsi/client" async defer onload="gisLoaded()"></script>
+
+  <style>
+    /* ── Brand tokens ──────────────────────────────── */
+    :root {
+      --primary:       #004165;
+      --primary-light: #006094;
+      --accent:        #0092d0;
+      --bg:            #f5f7fa;
+      --card:          #ffffff;
+      --text:          #1a1a2e;
+      --muted:         #6b7280;
+      --border:        #d1d5db;
+      --error:         #dc2626;
+      --success:       #16a34a;
+      --warning:       #d97706;
+      --radius:        8px;
+      --shadow:        0 2px 16px rgba(0,65,101,.10);
+    }
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+    body {
+      font-family: 'Montserrat', sans-serif;
+      background: var(--bg);
+      color: var(--text);
+      min-height: 100vh;
+    }
+
+    /* ── Login ─────────────────────────────────────── */
+    #login-view {
+      min-height: 100vh;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      padding: 20px;
+    }
+    .login-card {
+      background: var(--card);
+      border-radius: var(--radius);
+      box-shadow: var(--shadow);
+      padding: 48px 40px;
+      width: 100%;
+      max-width: 420px;
+      text-align: center;
+    }
+    .login-card h1 { font-size: 1.3rem; color: var(--primary); margin-bottom: 6px; }
+    .login-card p  { color: var(--muted); font-size: .875rem; margin-bottom: 28px; }
+    #denied-msg    { color: var(--error); font-size: .875rem; margin-top: 16px; display: none; }
+
+    /* ── App shell ─────────────────────────────────── */
+    #app-view { display: none; }
+
+    nav {
+      background: var(--primary);
+      color: #fff;
+      padding: 0 24px;
+      display: flex;
+      align-items: center;
+      gap: 0;
+      height: 52px;
+    }
+    .nav-site-link {
+      display: inline-flex;
+      align-items: center;
+      gap: 8px;
+      color: rgba(255,255,255,.7);
+      text-decoration: none;
+      font-size: .75rem;
+      font-weight: 600;
+      margin-right: 16px;
+      padding-right: 16px;
+      border-right: 1px solid rgba(255,255,255,.2);
+      white-space: nowrap;
+      transition: color .15s;
+    }
+    .nav-site-link img { height: 24px; }
+    .nav-site-link:hover { color: #fff; }
+    .nav-brand {
+      font-size: .9rem;
+      font-weight: 700;
+      letter-spacing: .02em;
+      margin-right: auto;
+      white-space: nowrap;
+    }
+    .nav-link {
+      display: inline-flex;
+      align-items: center;
+      height: 52px;
+      padding: 0 14px;
+      color: rgba(255,255,255,.8);
+      text-decoration: none;
+      font-size: .78rem;
+      font-weight: 600;
+      border-bottom: 3px solid transparent;
+      transition: color .15s, border-color .15s;
+      cursor: pointer;
+      position: relative;
+    }
+    .nav-link:hover, .nav-link.active {
+      color: #fff;
+      border-bottom-color: var(--accent);
+    }
+    .badge {
+      background: #ef4444;
+      color: #fff;
+      font-size: .65rem;
+      font-weight: 700;
+      border-radius: 10px;
+      padding: 1px 6px;
+      margin-left: 5px;
+      min-width: 18px;
+      text-align: center;
+    }
+    .badge.green { background: var(--success); }
+
+    main { padding: 28px 24px; max-width: 1100px; margin: 0 auto; }
+
+    /* ── Cards ─────────────────────────────────────── */
+    .card {
+      background: var(--card);
+      border-radius: var(--radius);
+      box-shadow: var(--shadow);
+      padding: 24px;
+      margin-bottom: 20px;
+    }
+    .card h2 { font-size: 1rem; font-weight: 700; color: var(--primary); margin-bottom: 16px; }
+    .card h3 { font-size: .9rem; font-weight: 600; color: var(--text); margin-bottom: 10px; }
+
+    /* ── Summary tiles ─────────────────────────────── */
+    .summary-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fill, minmax(180px, 1fr));
+      gap: 14px;
+    }
+    .tile {
+      background: var(--bg);
+      border: 1.5px solid var(--border);
+      border-radius: var(--radius);
+      padding: 16px;
+      cursor: pointer;
+      transition: border-color .15s, box-shadow .15s;
+    }
+    .tile:hover { border-color: var(--accent); box-shadow: 0 0 0 3px rgba(0,146,208,.1); }
+    .tile .tile-count { font-size: 2rem; font-weight: 700; color: var(--primary); }
+    .tile .tile-label { font-size: .75rem; color: var(--muted); margin-top: 4px; }
+    .tile.alert .tile-count { color: var(--error); }
+    .tile.warn  .tile-count { color: var(--warning); }
+
+    /* ── Tables ────────────────────────────────────── */
+    .filter-bar {
+      display: flex;
+      gap: 10px;
+      margin-bottom: 16px;
+      flex-wrap: wrap;
+    }
+    .filter-bar input, .filter-bar select {
+      padding: 8px 12px;
+      border: 1.5px solid var(--border);
+      border-radius: var(--radius);
+      font-family: inherit;
+      font-size: .8rem;
+      background: var(--card);
+    }
+    .filter-bar input { flex: 1; min-width: 180px; }
+    table { width: 100%; border-collapse: collapse; font-size: .8rem; }
+    th {
+      text-align: left;
+      padding: 10px 12px;
+      font-size: .7rem;
+      font-weight: 700;
+      letter-spacing: .06em;
+      text-transform: uppercase;
+      color: var(--muted);
+      border-bottom: 2px solid var(--border);
+    }
+    td {
+      padding: 10px 12px;
+      border-bottom: 1px solid var(--border);
+      vertical-align: top;
+    }
+    tr:last-child td { border-bottom: none; }
+    tr.clickable { cursor: pointer; }
+    tr.clickable:hover td { background: #f0f7ff; }
+
+    /* ── Status pills ──────────────────────────────── */
+    .pill {
+      display: inline-block;
+      padding: 2px 10px;
+      border-radius: 12px;
+      font-size: .7rem;
+      font-weight: 700;
+    }
+    .pill-prospect  { background: #fef3c7; color: #92400e; }
+    .pill-invoiced  { background: #dbeafe; color: #1e40af; }
+    .pill-active    { background: #d1fae5; color: #065f46; }
+    .pill-lapsed    { background: #fee2e2; color: #991b1b; }
+    .pill-rejected  { background: #f3f4f6; color: #374151; }
+    .pill-review    { background: #fce7f3; color: #9d174d; }
+
+    /* Badge workflow statuses (Member List → Badge Status) */
+    .pill-badge-draft    { background: #fef3c7; color: #92400e; }
+    .pill-badge-approved { background: #d1fae5; color: #065f46; }
+    .pill-badge-changes  { background: #fce7f3; color: #9d174d; }
+    .pill-badge-ordered  { background: #dbeafe; color: #1e40af; }
+    .pill-badge-legacy   { background: #ede9fe; color: #5b21b6; }
+    .pill-badge-none     { background: #f3f4f6; color: #374151; }
+
+    /* ── Member detail ─────────────────────────────── */
+    .detail-grid {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 16px 24px;
+    }
+    @media (max-width: 640px) { .detail-grid { grid-template-columns: 1fr; } }
+
+    .field-row {
+      display: flex;
+      flex-direction: column;
+      gap: 3px;
+    }
+    .field-row label {
+      font-size: .7rem;
+      font-weight: 700;
+      letter-spacing: .06em;
+      text-transform: uppercase;
+      color: var(--muted);
+    }
+    .field-row .value {
+      font-size: .875rem;
+      display: flex;
+      align-items: center;
+      gap: 6px;
+    }
+    .copy-btn {
+      background: none;
+      border: none;
+      cursor: pointer;
+      color: var(--muted);
+      padding: 2px;
+      border-radius: 4px;
+      font-size: .8rem;
+      transition: color .15s;
+    }
+    .copy-btn:hover { color: var(--primary); }
+
+    /* ── Invoice editor ────────────────────────────── */
+    .invoice-lines { width: 100%; border-collapse: collapse; margin: 8px 0; }
+    .invoice-lines th { font-size: .7rem; font-weight: 700; color: var(--muted); text-transform: uppercase; padding: 6px 8px; border-bottom: 1.5px solid var(--border); }
+    .invoice-lines td { padding: 6px 8px; border-bottom: 1px solid var(--border); }
+    .invoice-lines input { width: 100%; padding: 4px 6px; border: 1px solid var(--border); border-radius: 4px; font-size: .8rem; font-family: inherit; }
+    .invoice-total { font-weight: 700; text-align: right; padding: 8px 8px 0; font-size: .9rem; }
+
+    /* ── Checklist ─────────────────────────────────── */
+    .checklist { list-style: none; }
+    .checklist li {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      padding: 8px 0;
+      border-bottom: 1px solid var(--border);
+    }
+    .checklist li:last-child { border-bottom: none; }
+    .check-icon { font-size: 1rem; flex-shrink: 0; }
+    .check-label { flex: 1; font-size: .875rem; }
+    .check-date  { font-size: .75rem; color: var(--muted); }
+
+    /* ── Buttons ───────────────────────────────────── */
+    .btn {
+      padding: 9px 18px;
+      border-radius: var(--radius);
+      font-family: inherit;
+      font-size: .8rem;
+      font-weight: 700;
+      cursor: pointer;
+      border: none;
+      transition: background .15s, transform .1s;
+      letter-spacing: .02em;
+    }
+    .btn:active  { transform: scale(.98); }
+    .btn:disabled { opacity: .55; cursor: not-allowed; }
+    .btn-primary { background: var(--primary); color: #fff; }
+    .btn-primary:hover:not(:disabled) { background: var(--primary-light); }
+    .btn-success { background: var(--success); color: #fff; }
+    .btn-success:hover:not(:disabled) { background: #15803d; }
+    .btn-danger  { background: var(--error);   color: #fff; }
+    .btn-danger:hover:not(:disabled)  { background: #b91c1c; }
+    .btn-ghost   { background: transparent; color: var(--primary); border: 1.5px solid var(--primary); }
+    .btn-ghost:hover:not(:disabled)   { background: #f0f7ff; }
+    .btn-warning { background: var(--warning); color: #fff; }
+    .btn-sm { padding: 6px 12px; font-size: .75rem; }
+
+    .action-bar { display: flex; gap: 10px; flex-wrap: wrap; margin-top: 20px; padding-top: 16px; border-top: 1px solid var(--border); }
+    .spacer { flex: 1; }
+
+    /* ── Alerts / messages ─────────────────────────── */
+    .alert {
+      border-radius: var(--radius);
+      padding: 12px 16px;
+      font-size: .8rem;
+      line-height: 1.6;
+      margin: 12px 0;
+    }
+    .alert-warn    { background: #fffbeb; border: 1.5px solid #fcd34d; color: #92400e; }
+    .alert-error   { background: #fef2f2; border: 1.5px solid #fca5a5; color: #991b1b; }
+    .alert-success { background: #f0fdf4; border: 1.5px solid #86efac; color: #166534; }
+    .alert-info    { background: #eff6ff; border: 1.5px solid #93c5fd; color: #1e40af; }
+
+    /* ── Loading spinner ───────────────────────────── */
+    .spinner {
+      width: 20px; height: 20px;
+      border: 3px solid var(--border);
+      border-top-color: var(--accent);
+      border-radius: 50%;
+      animation: spin .6s linear infinite;
+      display: inline-block;
+    }
+    @keyframes spin { to { transform: rotate(360deg); } }
+    #loading-overlay {
+      position: fixed; inset: 0;
+      background: rgba(255,255,255,.85);
+      display: flex; align-items: center; justify-content: center;
+      gap: 12px;
+      font-size: .9rem;
+      color: var(--muted);
+      z-index: 999;
+    }
+    #loading-overlay.hidden { display: none; }
+
+    /* ── Back button ───────────────────────────────── */
+    .back-btn {
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+      color: var(--primary);
+      font-size: .8rem;
+      font-weight: 600;
+      cursor: pointer;
+      margin-bottom: 16px;
+      background: none;
+      border: none;
+      padding: 0;
+    }
+    .back-btn:hover { text-decoration: underline; }
+
+    /* ── Section divider ───────────────────────────── */
+    .section-title {
+      font-size: .7rem;
+      font-weight: 700;
+      letter-spacing: .1em;
+      text-transform: uppercase;
+      color: var(--muted);
+      margin: 20px 0 10px;
+      padding-bottom: 6px;
+      border-bottom: 1px solid var(--border);
+    }
+
+    /* ── Resource cards ────────────────────────────── */
+    .resource-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fill, minmax(260px, 1fr));
+      gap: 16px;
+    }
+    .resource-card {
+      display: block;
+      background: var(--bg);
+      border: 1px solid var(--border);
+      border-radius: var(--radius);
+      padding: 20px;
+      text-decoration: none;
+      color: inherit;
+      transition: box-shadow .15s, border-color .15s;
+    }
+    .resource-card:hover { box-shadow: var(--shadow); border-color: var(--accent); }
+    .resource-title { font-weight: 700; font-size: 1rem; color: var(--primary); margin-bottom: 2px; }
+    .resource-alias { font-size: .75rem; color: var(--muted); margin-bottom: 10px; }
+    .resource-desc  { font-size: .85rem; color: var(--text); margin-bottom: 14px; line-height: 1.5; }
+    .resource-link  { font-size: .8rem; color: var(--accent); font-weight: 600; }
+
+    /* ── Responsive ────────────────────────────────── */
+    @media (max-width: 640px) {
+      main { padding: 16px 12px; }
+      nav  { padding: 0 12px; }
+      .nav-link span { display: none; }
+    }
+  </style>
+</head>
+<body>
+
+<!-- ── Loading overlay ──────────────────────────── -->
+<div id="loading-overlay">
+  <div class="spinner"></div>
+  <span id="loading-text">Loading…</span>
+</div>
+
+<!-- ── Login view ───────────────────────────────── -->
+<div id="login-view">
+  <div class="login-card">
+    <img src="https://ccdn.toastmasters.org/medias/files/brand-materials/loyal-blue-masthead-logo.png"
+         alt="Toastmasters" style="height:36px; margin-bottom:16px;">
+    <h1>GOTO Toastmasters<br>Committee Hub</h1>
+    <p>Sign in with your committee Google account to continue.</p>
+    <div id="g_id_signin"></div>
+    <p id="denied-msg">
+      <strong>Access denied.</strong><br>
+      Your Google account is not on the committee list, or your term has ended.
+      Contact <a href="mailto:goto.toastmasters.committee@gmail.com">goto.toastmasters.committee@gmail.com</a> for help.
+    </p>
+  </div>
+</div>
+
+<!-- ── App view ─────────────────────────────────── -->
+<div id="app-view">
+  <nav>
+    <a class="nav-site-link" href="https://gototoastmasters.com.au" title="Back to site">
+      <img src="https://ccdn.toastmasters.org/medias/files/brand-materials/loyal-blue-masthead-logo.png" alt="GOTO Toastmasters">
+    </a>
+    <span class="nav-brand">GOTO Committee Hub</span>
+    <a class="nav-link active" onclick="showView('dashboard')" id="nav-dashboard">
+      <span>Dashboard</span>
+    </a>
+    <a class="nav-link" onclick="showView('members')" id="nav-members">
+      <span>Members</span>
+      <span class="badge" id="badge-prospects" style="display:none">0</span>
+    </a>
+    <a class="nav-link" onclick="showView('badges')" id="nav-badges">
+      <span>Badges</span>
+      <span class="badge" id="badge-badges" style="display:none">0</span>
+    </a>
+    <a class="nav-link" onclick="showView('dietary')" id="nav-dietary">
+      <span>Dietary</span>
+    </a>
+    <a class="nav-link" onclick="showView('education')" id="nav-education">
+      <span>Education</span>
+    </a>
+    <a class="nav-link" onclick="showView('errors')" id="nav-errors">
+      <span>Errors</span>
+      <span class="badge" id="badge-errors" style="display:none">0</span>
+    </a>
+    <a class="nav-link" onclick="showView('resources')" id="nav-resources">
+      <span>Resources</span>
+    </a>
+    <a class="nav-link" onclick="signOut()" style="margin-left:8px">
+      <span>Sign out</span>
+    </a>
+  </nav>
+
+  <main id="main-content">
+    <!-- Views injected here -->
+  </main>
+</div>
+
+<script>
+// ══════════════════════════════════════════════════════════════════════════════
+// CONFIG
+// ══════════════════════════════════════════════════════════════════════════════
+
+// Google Cloud OAuth 2.0 Client ID (public — no secret here).
+// Add https://gototoastmasters.com.au as an Authorised JavaScript origin in
+// Google Cloud Console → APIs & Services → Credentials.
+const GOOGLE_CLIENT_ID = '303221448159-6i35t5bc5k5ukncm1lj36u3qb2731j2d.apps.googleusercontent.com';
+
+// Apps Script web app endpoint (doPost).  No sheet ID or OAuth scopes needed
+// client-side — all data access happens server-side via the ID token.
+const WEBAPP_URL = 'https://script.google.com/macros/s/AKfycbwxaVwyjb0dRYx3AnU1p4g9W0SbiqqlUZPyjOgpWA3KhwcjoSbnOa_gSxM8DrX3kT6t/exec';
+
+// ══════════════════════════════════════════════════════════════════════════════
+// STATE
+// ══════════════════════════════════════════════════════════════════════════════
+
+let idToken     = null;   // Google ID token (JWT) from One Tap sign-in
+let currentUser = null;   // { email, name } parsed from the ID token
+let currentView = 'dashboard';
+
+// Cached sheet data
+let memberList     = []; // array of objects
+let memberHeaders  = [];
+let onboardingList = [];
+let dietaryList    = [];
+let educationList  = [];
+let errorsList     = [];
+let invoicesList      = [];
+let transactionsList  = [];
+let productsList      = [];
+let meetingsList      = [];
+
+// ══════════════════════════════════════════════════════════════════════════════
+// INIT
+// ══════════════════════════════════════════════════════════════════════════════
+
+/**
+ * Called when the GIS library loads.
+ * We only need One Tap / Sign-In with Google for an ID token.
+ * No OAuth access token or GAPI required — all sheet access is server-side.
+ */
+function gisLoaded() {
+  google.accounts.id.initialize({
+    client_id: GOOGLE_CLIENT_ID,
+    callback: handleCredentialResponse,
+    auto_select: false,
+  });
+  google.accounts.id.renderButton(
+    document.getElementById('g_id_signin'),
+    { theme: 'outline', size: 'large', width: 280 }
+  );
+  hideLoading();
+}
+
+/**
+ * Called immediately when the user clicks "Sign in with Google".
+ * `response.credential` is a signed JWT (ID token).
+ */
+async function handleCredentialResponse(response) {
+  idToken = response.credential;
+  // Parse the JWT payload (base64url-encoded middle segment) — no network call.
+  const payload = JSON.parse(atob(idToken.split('.')[1].replace(/-/g, '+').replace(/_/g, '/')));
+  currentUser   = { email: payload.email, name: payload.name || '' };
+
+  showLoading('Signing in…');
+  await loadAllData();
+
+  // loadAllData clears currentUser on auth failure; only show app if still set.
+  if (currentUser) {
+    document.getElementById('login-view').style.display = 'none';
+    document.getElementById('app-view').style.display   = 'block';
+    showView('dashboard');
+  }
+}
+
+function signOut() {
+  google.accounts.id.disableAutoSelect();
+  idToken     = null;
+  currentUser = null;
+  document.getElementById('app-view').style.display   = 'none';
+  document.getElementById('login-view').style.display = 'flex';
+  document.getElementById('denied-msg').style.display = 'none';
+}
+
+function showDenied() {
+  hideLoading();
+  document.getElementById('denied-msg').style.display = 'block';
+}
+
+// ══════════════════════════════════════════════════════════════════════════════
+// DATA LOADING
+// ══════════════════════════════════════════════════════════════════════════════
+
+async function loadAllData() {
+  showLoading('Loading hub data…');
+  try {
+    // Single server-side call — Apps Script reads all sheets and verifies
+    // committee membership before returning data.
+    const result = await hubPost({ action: 'getAll' });
+
+    if (result.error) {
+      // 'Access denied' means the user is not a committee member.
+      const isAccessDenied = result.error.toLowerCase().includes('access denied');
+      if (isAccessDenied) { showDenied(); currentUser = null; }
+      else { showError('Failed to load hub data: ' + result.error); currentUser = null; }
+      hideLoading();
+      return;
+    }
+
+    const d = result.data || {};
+    const mlRaw   = d['Member List'] || [];
+    const onbRaw  = d['Onboarding']  || [];
+    const dietRaw = d['Dietary']     || [];
+    const eduRaw  = d['Education']   || [];
+    const errRaw  = d['Errors']      || [];
+    const invRaw  = d['Invoices']      || [];
+    const txnRaw  = d['Transactions']  || [];
+    const prodRaw = d['Products']      || [];
+    const meetRaw = d['Meetings']      || [];
+
+    memberHeaders    = mlRaw[0] || [];
+    memberList       = rowsToObjects(mlRaw);
+    onboardingList   = rowsToObjects(onbRaw);
+    dietaryList      = rowsToObjects(dietRaw);
+    educationList    = rowsToObjects(eduRaw);
+    errorsList       = rowsToObjects(errRaw);
+    invoicesList     = rowsToObjects(invRaw);
+    transactionsList = rowsToObjects(txnRaw);
+    productsList     = rowsToObjects(prodRaw);
+    meetingsList     = rowsToObjects(meetRaw);
+
+    updateBadges();
+  } catch (err) {
+    console.error('[loadAllData] error:', err);
+    showError('Failed to load hub data: ' + (err.message || String(err)));
+    currentUser = null;
+    hideLoading();
+    return;
+  }
+  hideLoading();
+}
+
+async function refreshData() {
+  await loadAllData();
+  showView(currentView);
+}
+
+// ══════════════════════════════════════════════════════════════════════════════
+// NAV + VIEWS
+// ══════════════════════════════════════════════════════════════════════════════
+
+function showView(view, data) {
+  currentView = view;
+  document.querySelectorAll('.nav-link').forEach(l => l.classList.remove('active'));
+  const navEl = document.getElementById('nav-' + view);
+  if (navEl) navEl.classList.add('active');
+
+  const main = document.getElementById('main-content');
+  switch (view) {
+    case 'dashboard':   main.innerHTML = renderDashboard();   break;
+    case 'members':     main.innerHTML = renderMembers();     break;
+    case 'member-detail': main.innerHTML = renderMemberDetail(data); break;
+    case 'badges':      main.innerHTML = renderBadges();      break;
+    case 'dietary':     main.innerHTML = renderDietary();     break;
+    case 'education':   main.innerHTML = renderEducation();   break;
+    case 'errors':      main.innerHTML = renderErrors();      break;
+    case 'resources':   main.innerHTML = renderResources();   break;
+    default: main.innerHTML = '<p>View not found.</p>';
+  }
+}
+
+// ══════════════════════════════════════════════════════════════════════════════
+// DASHBOARD
+// ══════════════════════════════════════════════════════════════════════════════
+
+function renderDashboard() {
+  const today       = new Date();
+  const sixWeeks    = new Date(today.getTime() + 42 * 864e5);
+
+  const prospects   = memberList.filter(m => norm(m.status) === 'prospect');
+  const pendingReview = invoicesList.filter(i => norm(i.email_sent) === 'pending review');
+  const paidNoTI    = memberList.filter(m =>
+    m.invoice_paid_date && !m.ti_payment_submitted && norm(m.status) === 'active');
+  const incompleteOnboarding = memberList.filter(m =>
+    m.invoice_paid_date && norm(m.onboarding_complete) !== 'true' &&
+    norm(m.status) === 'active');
+  const lapsingSoon = memberList.filter(m => {
+    if (norm(m.status) !== 'active') return false;
+    if (!m.membership_until) return false;
+    const d = new Date(m.membership_until);
+    return !isNaN(d.getTime()) && d >= today && d <= sixWeeks;
+  });
+  const errorsUnread = errorsList.filter(e => !e.reviewed_by);
+
+  return `
+    <div class="card">
+      <h2>Pending Actions</h2>
+      <div class="summary-grid">
+        <div class="tile alert" onclick="showView('members'); filterMembers('Prospect')">
+          <div class="tile-count">${prospects.length}</div>
+          <div class="tile-label">Applications to review</div>
+        </div>
+        <div class="tile ${pendingReview.length ? 'alert' : ''}" onclick="showView('members')">
+          <div class="tile-count">${pendingReview.length}</div>
+          <div class="tile-label">Invoices awaiting category confirmation</div>
+        </div>
+        <div class="tile ${paidNoTI.length ? 'warn' : ''}" onclick="showView('members'); filterMembers('Active')">
+          <div class="tile-count">${paidNoTI.length}</div>
+          <div class="tile-label">Paid — TI not yet submitted</div>
+        </div>
+        <div class="tile ${incompleteOnboarding.length ? 'warn' : ''}" onclick="showView('members'); filterMembers('Active')">
+          <div class="tile-count">${incompleteOnboarding.length}</div>
+          <div class="tile-label">Onboarding incomplete</div>
+        </div>
+        <div class="tile ${lapsingSoon.length ? 'warn' : ''}" onclick="showView('members'); filterMembers('Active')">
+          <div class="tile-count">${lapsingSoon.length}</div>
+          <div class="tile-label">Expiring within 6 weeks</div>
+        </div>
+        ${badgeColumnsPresent() ? `
+        <div class="tile ${badgesAwaitingApproval().length ? 'warn' : ''}" onclick="filterBadges('Draft Created')">
+          <div class="tile-count">${badgesAwaitingApproval().length}</div>
+          <div class="tile-label">Badges awaiting approval</div>
+        </div>` : ''}
+        <div class="tile ${errorsUnread.length ? 'alert' : ''}" onclick="showView('errors')">
+          <div class="tile-count">${errorsUnread.length}</div>
+          <div class="tile-label">Unread errors</div>
+        </div>
+      </div>
+    </div>
+    <div class="card">
+      <h2>Signed in as</h2>
+      <p style="font-size:.875rem; color:var(--muted)">${currentUser ? currentUser.email : '—'}</p>
+    </div>`;
+}
+
+// ══════════════════════════════════════════════════════════════════════════════
+// MEMBERS LIST
+// ══════════════════════════════════════════════════════════════════════════════
+
+let _memberFilter = { text: '', status: '' };
+function filterMembers(status) { _memberFilter.status = status; showView('members'); }
+
+function renderMembers() {
+  const statuses = ['', 'Prospect', 'Invoiced', 'Active', 'Lapsed', 'Rejected'];
+  const f = _memberFilter;
+
+  const rows = memberList.filter(m => {
+    if (f.status && (m.status || '') !== f.status) return false;
+    if (f.text) {
+      const t = f.text.toLowerCase();
+      return (m.invoicename || m.first + ' ' + m.last || '').toLowerCase().includes(t)
+          || (m.email || '').toLowerCase().includes(t);
+    }
+    return true;
+  });
+
+  const rowsHtml = rows.map(m => {
+    const name     = m.invoicename || ((m.first || '') + ' ' + (m.last || '')).trim();
+    const status   = m.status || '';
+    const until    = m.membership_until ? fmtDate(m.membership_until) : '—';
+    const onb      = norm(m.onboarding_complete) === 'true' ? '✓' : '';
+    return `<tr class="clickable" onclick="openMember('${esc(m.email || '')}')">
+      <td>${esc(name)}</td>
+      <td><a href="mailto:${esc(m.email)}">${esc(m.email || '')}</a></td>
+      <td><span class="pill pill-${norm(status)}">${esc(status)}</span></td>
+      <td>${esc(m.membership_category || '')}</td>
+      <td>${esc(m.period || '')}</td>
+      <td>${until}</td>
+      <td style="text-align:center">${onb}</td>
+    </tr>`;
+  }).join('');
+
+  return `
+    <div class="card">
+      <h2>Members <span style="font-weight:400; color:var(--muted);">(${rows.length})</span></h2>
+      <div class="filter-bar">
+        <input type="text" placeholder="Search name or email…"
+          value="${esc(f.text)}"
+          oninput="_memberFilter.text=this.value; showView('members')">
+        <select onchange="_memberFilter.status=this.value; showView('members')">
+          ${statuses.map(s => `<option value="${s}" ${f.status===s?'selected':''}>${s||'All statuses'}</option>`).join('')}
+        </select>
+        <button class="btn btn-ghost btn-sm" onclick="refreshData()">↻ Refresh</button>
+      </div>
+      <div style="overflow-x:auto">
+        <table>
+          <thead><tr>
+            <th>Name</th><th>Email</th><th>Status</th><th>Category</th>
+            <th>Period</th><th>Until</th><th>Onboarding</th>
+          </tr></thead>
+          <tbody>${rowsHtml || '<tr><td colspan="7" style="color:var(--muted);text-align:center;padding:24px">No members match the current filter.</td></tr>'}</tbody>
+        </table>
+      </div>
+    </div>`;
+}
+
+function openMember(email) {
+  const member = memberList.find(m => (m.email || '') === email);
+  if (!member) return;
+  showView('member-detail', { member });
+}
+
+// ══════════════════════════════════════════════════════════════════════════════
+// BADGES
+// ══════════════════════════════════════════════════════════════════════════════
+//
+// Badges are drafted and emailed to the member from the Apps Script menu
+// (GOTO → Badges), which sets Badge Status = 'Draft Created'. The member replies,
+// and the committee records that reply here:
+//
+//   blank → Draft Created → Approved → Ordered
+//                        ↘ Changes Requested → (redrafted) → Draft Created
+//
+// 'Approved' is what buildBadgeOrder() collects into the next order, so approving
+// here is what actually gets a badge made.
+
+// Member List Status values that never get a badge — mirrors
+// BADGE_EXCLUDED_MEMBER_STATUSES in Code.js. Kept client-side so the hub does not
+// offer a draft the server is going to refuse.
+const BADGE_EXCLUDED_MEMBER_STATUSES = ['Rejected', 'Prospect', 'Lapsed'];
+
+const BADGE_STATUS_DRAFT    = 'Draft Created';
+const BADGE_STATUS_APPROVED = 'Approved';
+const BADGE_STATUS_CHANGES  = 'Changes Requested';
+const BADGE_STATUS_ORDERED  = 'Ordered';
+
+/**
+ * True once addBadgeWorkflowColumns() has been run against Member List.
+ * The server refuses to write badge state without those columns rather than
+ * risk writing to the wrong one, so the UI hides the workflow instead of
+ * offering buttons that cannot work.
+ */
+function badgeColumnsPresent() {
+  const norms = memberHeaders.map(h => String(h).replace(/\W+/g, '_').toLowerCase());
+  return norms.includes('badge_status') && norms.includes('badgeuri');
+}
+
+function badgeStatusOf(m) { return (m.badge_status || '').toString().trim(); }
+function badgeUriOf(m)    { return (m.badgeuri     || '').toString().trim(); }
+
+/** Artwork but no status: drafted before the workflow existed. */
+function isLegacyBadge(m) { return !badgeStatusOf(m) && !!badgeUriOf(m); }
+
+function badgesAwaitingApproval() {
+  return memberList.filter(m => badgeStatusOf(m) === BADGE_STATUS_DRAFT);
+}
+
+function badgePill(m) {
+  const s = badgeStatusOf(m);
+  if (!s) return isLegacyBadge(m)
+    ? '<span class="pill pill-badge-legacy">Pre-workflow</span>'
+    : '<span class="pill pill-badge-none">Not drafted</span>';
+  const cls = {
+    [BADGE_STATUS_DRAFT]:    'pill-badge-draft',
+    [BADGE_STATUS_APPROVED]: 'pill-badge-approved',
+    [BADGE_STATUS_CHANGES]:  'pill-badge-changes',
+    [BADGE_STATUS_ORDERED]:  'pill-badge-ordered',
+  }[s] || 'pill-badge-none';
+  return `<span class="pill ${cls}">${esc(s)}</span>`;
+}
+
+function badgeArtworkLink(m, label) {
+  const uri = badgeUriOf(m);
+  if (!uri) return '<span style="color:var(--muted)">—</span>';
+  return `<a href="${esc(uri)}" target="_blank" rel="noopener">${label || 'View badge →'}</a>`;
+}
+
+/**
+ * The buttons available for one member, matched to what the server will accept
+ * (hub.js: hubApproveBadge_ / hubRequestBadgeChanges_). Anything the server
+ * would reject is shown as a disabled button or a note, not offered and refused.
+ */
+function badgeActions(m) {
+  const email   = esc(m.email || '');
+  const status  = badgeStatusOf(m);
+  const approve = `<button class="btn btn-success btn-sm" onclick="approveBadge('${email}')">Approve</button>`;
+  const changes = `<button class="btn btn-ghost btn-sm" onclick="requestBadgeChanges('${email}')">Request changes</button>`;
+  const draft   = label => `<button class="btn btn-primary btn-sm" onclick="draftBadge('${email}')">${label}</button>`;
+  const note    = t => `<span style="font-size:.75rem;color:var(--muted)">${t}</span>`;
+
+  if (status === BADGE_STATUS_ORDERED)  return note('Ordered — nothing to do');
+  if (status === BADGE_STATUS_APPROVED) return changes;
+  if (status === BADGE_STATUS_DRAFT)    return approve + ' ' + changes;
+  // A redraft no longer waits for someone to run the club-wide sweep.
+  if (status === BADGE_STATUS_CHANGES)  return draft('Draft again');
+  if (isLegacyBadge(m)) {
+    // The server will not approve these: with no status it cannot tell whether the
+    // badge was already ordered, and approving would risk paying for a second one.
+    return `<button class="btn btn-success btn-sm" disabled
+        title="Predates the badge workflow — run the &quot;Backfill legacy badges&quot; setup step, or request changes to have it redrafted">Approve</button> ` + changes;
+  }
+  if (BADGE_EXCLUDED_MEMBER_STATUSES.indexOf((m.status || '').toString().trim()) >= 0) {
+    return note(`${esc((m.status || '').toString().trim())} members do not get a badge`);
+  }
+  return draft('Draft &amp; email badge');
+}
+
+let _badgeFilter = BADGE_STATUS_DRAFT;
+function filterBadges(status) { _badgeFilter = status; showView('badges'); }
+
+function renderBadges() {
+  if (!badgeColumnsPresent()) {
+    return `
+      <div class="card">
+        <h2>Badges</h2>
+        <div class="alert alert-info">
+          The badge workflow columns are not on <strong>Member List</strong> yet, so there is
+          nothing to approve here. Run <code>addBadgeWorkflowColumns()</code> once from the
+          Apps Script editor (Extensions → Apps Script), then refresh this page.
+        </div>
+      </div>`;
+  }
+
+  const filters = [
+    { key: BADGE_STATUS_DRAFT,    label: 'Awaiting approval' },
+    { key: BADGE_STATUS_APPROVED, label: 'Approved — to order' },
+    { key: BADGE_STATUS_CHANGES,  label: 'Changes requested' },
+    { key: BADGE_STATUS_ORDERED,  label: 'Ordered' },
+    { key: 'legacy',              label: 'Pre-workflow' },
+    { key: 'none',                label: 'Not drafted' },
+    { key: '',                    label: 'All badges' },
+  ];
+
+  const matches = m => {
+    if (_badgeFilter === 'legacy') return isLegacyBadge(m);
+    if (_badgeFilter === 'none')   return !badgeStatusOf(m) && !badgeUriOf(m) && norm(m.status) === 'active';
+    if (_badgeFilter === '')       return !!badgeStatusOf(m) || !!badgeUriOf(m);
+    return badgeStatusOf(m) === _badgeFilter;
+  };
+
+  // Oldest draft first: the member who has been waiting longest is worked first.
+  const rows = memberList.filter(matches).sort((a, b) => {
+    const da = new Date(a.badge_sent || 0).getTime() || 0;
+    const db = new Date(b.badge_sent || 0).getTime() || 0;
+    return da - db;
+  });
+
+  const counts = {};
+  filters.forEach(f => {
+    const saved = _badgeFilter;
+    _badgeFilter = f.key;
+    counts[f.key] = memberList.filter(matches).length;
+    _badgeFilter = saved;
+  });
+
+  const rowsHtml = rows.map(m => {
+    const name = m.invoicename || ((m.first || '') + ' ' + (m.last || '')).trim();
+    return `<tr>
+      <td><a href="#" onclick="openMember('${esc(m.email || '')}'); return false;">${esc(name)}</a></td>
+      <td><a href="mailto:${esc(m.email)}">${esc(m.email || '')}</a></td>
+      <td>${badgePill(m)}</td>
+      <td>${m.badge_sent ? fmtDate(m.badge_sent) : '—'}</td>
+      <td>${m.badge_approved ? fmtDate(m.badge_approved) : '—'}</td>
+      <td>${esc(String(m.badge_order_id || '')) || '—'}</td>
+      <td>${badgeArtworkLink(m)}</td>
+      <td style="white-space:nowrap">${badgeActions(m)}</td>
+    </tr>`;
+  }).join('');
+
+  const activeLabel = (filters.find(f => f.key === _badgeFilter) || filters[0]).label;
+
+  return `
+    <div class="card">
+      <h2>Badges <span style="font-weight:400; color:var(--muted);">${esc(activeLabel)} (${rows.length})</span></h2>
+      <p style="color:var(--muted);font-size:.8rem;margin-bottom:16px">
+        Members are emailed their badge for review from the Apps Script menu
+        (GOTO → Badges). Record their reply here: <strong>Approve</strong> puts the badge
+        into the next order, <strong>Request changes</strong> sends it back to be redrafted.
+      </p>
+      <div class="filter-bar">
+        <select onchange="filterBadges(this.value)">
+          ${filters.map(f => `<option value="${esc(f.key)}" ${f.key === _badgeFilter ? 'selected' : ''}>${f.label} (${counts[f.key]})</option>`).join('')}
+        </select>
+        <div class="spacer"></div>
+        <button class="btn btn-ghost btn-sm" onclick="refreshData()">↻ Refresh</button>
+      </div>
+      <div style="overflow-x:auto">
+        <table>
+          <thead><tr>
+            <th>Name</th><th>Email</th><th>Badge</th><th>Drafted</th>
+            <th>Approved</th><th>Order</th><th>Artwork</th><th>Action</th>
+          </tr></thead>
+          <tbody>${rowsHtml || `<tr><td colspan="8" style="color:var(--muted);text-align:center;padding:24px">Nothing under &ldquo;${esc(activeLabel)}&rdquo;.</td></tr>`}</tbody>
+        </table>
+      </div>
+    </div>`;
+}
+
+// ══════════════════════════════════════════════════════════════════════════════
+// MEMBER DETAIL
+// ══════════════════════════════════════════════════════════════════════════════
+
+function renderMemberDetail(data) {
+  if (!data || !data.member) return '<p>Member not found.</p>';
+  const m      = data.member;
+  const status = (m.status || '').trim();
+  const name   = m.invoicename || ((m.first || '') + ' ' + (m.last || '')).trim();
+
+  const onboarding = onboardingList.find(o =>
+    (o.member_email || '').toLowerCase() === (m.email || '').toLowerCase()
+  ) || {};
+  const invoice = invoicesList.slice().reverse().find(i =>
+    (i.email || '').toLowerCase() === (m.email || '').toLowerCase() &&
+    ['pending', 'pending review'].includes(norm(i.email_sent || ''))
+  );
+
+  const isProspect = (status === 'Prospect');
+  const isLapsed   = (status === 'Lapsed');
+
+  const googleSearch = `https://www.google.com/search?q=${encodeURIComponent(name + ' ' + (m.invoicename || ''))}`;
+
+  let html = `
+    <button class="back-btn" onclick="showView('members')">← Back to Members</button>
+    <div class="card">
+      <div style="display:flex; align-items:center; gap:12px; margin-bottom:16px; flex-wrap:wrap;">
+        <h2 style="margin:0">${esc(name)}</h2>
+        <span class="pill pill-${norm(status)}">${esc(status)}</span>
+        ${invoice && norm(invoice.email_sent) === 'pending review'
+          ? '<span class="pill pill-review">⚠ Pending Review</span>' : ''}
+      </div>`;
+
+  // ── Application Review ──────────────────────────────────────────────────────
+  if (isProspect) {
+    html += renderApplicationReview(m, invoice, onboarding, googleSearch, name);
+  }
+  // ── Member Management ───────────────────────────────────────────────────────
+  else {
+    html += renderMemberManagement(m, invoice, onboarding, isLapsed);
+  }
+
+  html += '</div>'; // close card
+  return html;
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Application Review section
+// ─────────────────────────────────────────────────────────────────────────────
+function renderApplicationReview(m, invoice, onboarding, googleSearch, name) {
+  const isPendingReview = invoice && norm(invoice.email_sent) === 'pending review';
+
+  // Line items from Transactions tab, matched by email
+  const memberEmail = (m.email || '').toLowerCase();
+  const skuLines = transactionsList.filter(t =>
+    (t.email || '').toLowerCase() === memberEmail
+  );
+
+  // Format join date as "Month Year" e.g. "June 2026"
+  const joinMonthDisplay = m.join_date
+    ? (() => {
+        const d = new Date(m.join_date);
+        return isNaN(d.getTime()) ? m.join_date
+          : d.toLocaleDateString('en-AU', { month: 'long', year: 'numeric', timeZone: 'Australia/Melbourne' });
+      })()
+    : '—';
+
+  return `
+    <div class="section-title">Applicant Details</div>
+    <div class="detail-grid">
+      ${fieldRow('Name',        name,            m.email)}
+      ${fieldRow('Email',       m.email,         m.email)}
+      ${fieldRow('Phone',       m.phone,         m.phone)}
+      ${fieldRow('WhatsApp',    m.whatsapp || m.phone, m.whatsapp || m.phone)}
+      ${m.linkedin_profile_url
+        ? `<div class="field-row"><label>LinkedIn</label><div class="value">
+             <a href="${esc(m.linkedin_profile_url)}" target="_blank" rel="noopener">${esc(m.linkedin_profile_url)}</a>
+           </div></div>`
+        : `<div class="field-row"><label>LinkedIn</label><div class="value"><a href="${googleSearch}" target="_blank" rel="noopener" style="font-size:.75rem">Google search →</a></div></div>`}
+      ${fieldRow('TM ID',       m.ti_number || '—', m.ti_number)}
+      ${fieldRow('TM History',  m.membership_category || '—', null)}
+      ${fieldRow('Attended as guest', m.attended_as_guest || '—', null)}
+      ${fieldRow('Join month',  joinMonthDisplay, null)}
+      ${fieldRow('Period',      m.period || '—', null)}
+      ${fieldRow('Referral',    m.referral_source || '—', null)}
+      ${fieldRow('Referred by', m.referred_by || '—', null)}
+    </div>
+
+    <div class="section-title">Invoice</div>
+    ${isPendingReview ? `<div class="alert alert-warn">
+      ⚠ <strong>Category unresolved.</strong> This applicant answered "Not Sure" to TM history.
+      Confirm their Membership Category before approving.
+      <a href="https://www.toastmasters.org/member-admin/find-a-member" target="_blank" rel="noopener">Search Club Central →</a>
+    </div>` : ''}
+    ${invoice
+      ? `<p style="font-size:.8rem;color:var(--muted);margin-bottom:8px">
+           Invoice #${esc(invoice.invoice_number)}.
+           ${invoice.pdf_status === 'Failed'
+             ? `<span style="color:var(--error);font-weight:600;margin-left:8px">⚠ PDF generation failed</span>`
+             : invoice.pdf_status === 'Queued' || invoice.pdf_status === 'Generating'
+               ? `<span style="color:var(--muted);margin-left:8px">⏳ PDF generating…</span>`
+               : invoice.invoice_link
+                 ? `<a href="${esc(invoice.invoice_link)}" target="_blank" rel="noopener" style="margin-left:8px">View PDF →</a>`
+                 : ''}
+         </p>
+         <table class="invoice-lines">
+           <thead><tr><th>SKU</th><th style="text-align:right">Qty</th></tr></thead>
+           <tbody>
+             ${skuLines.length
+               ? skuLines.map(t => `<tr><td>${esc(t.sku || t.sku_name || '')}</td><td style="text-align:right">${esc(String(t.qty || ''))}</td></tr>`).join('')
+               : '<tr><td colspan="2" style="color:var(--muted);font-style:italic">No line items found</td></tr>'}
+           </tbody>
+         </table>`
+      : `<p style="font-size:.8rem;color:var(--muted);margin-bottom:8px">No invoice generated yet.</p>`}
+
+    <div id="invoice-editor">
+      <!-- Line item editor populated by renderInvoiceEditor() -->
+    </div>
+
+    <div class="action-bar">
+      <button class="btn btn-danger btn-sm" onclick="rejectMember('${esc(m.email)}')">Reject</button>
+      <div class="spacer"></div>
+      ${invoice && invoice.pdf_status === 'Failed'
+        ? `<button class="btn btn-ghost btn-sm" onclick="retryInvoicePdf('${esc(m.email)}')">Retry PDF</button>`
+        : ''}
+      <button class="btn btn-ghost btn-sm" onclick="generateInvoiceFlow('${esc(m.email)}')">Amend Invoice</button>
+      <button class="btn btn-success"
+        onclick="approveAndSend('${esc(m.email)}')"
+        ${isPendingReview ? 'disabled title="Resolve membership category first"' : ''}
+        ${invoice && (invoice.pdf_status === 'Queued' || invoice.pdf_status === 'Generating') ? 'title="PDF still generating — click to generate now and send"' : ''}>
+        Approve &amp; Send Invoice
+      </button>
+    </div>`;
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Member Management section
+// ─────────────────────────────────────────────────────────────────────────────
+function renderMemberManagement(m, invoice, onboarding, isLapsed) {
+  const name        = m.invoicename || ((m.first || '') + ' ' + (m.last || '')).trim();
+  const hasPaidDate = !!m.invoice_paid_date;
+  const isActive    = norm(m.status) === 'active';
+
+  const checklistSteps = [
+    { key: 'club_central_registered',    label: 'Club Central registered',   col: 'Club Central Registered' },
+    { key: 'club_central_paid',          label: 'Club Central paid',         col: 'Club Central Paid' },
+    { key: 'whatsapp_added',             label: 'Added to WhatsApp',         col: 'WhatsApp Added' },
+    { key: 'calendar_invited',           label: 'Google Calendar invited',   col: 'Calendar Invited' },
+    { key: 'easy_speak_linked',          label: 'Easy-Speak linked',         col: 'Easy-Speak Linked' },
+    { key: 'badge_made',                 label: 'Badge ordered',             col: 'Badge Made' },
+    { key: 'invoice_sent',               label: 'Invoice sent',              col: 'Invoice Sent' },
+    { key: 'member_goals_discussion',    label: 'Member goals discussion',   col: 'Member Goals Discussion' },
+    { key: 'linkedin_follow_connection', label: 'LinkedIn follow/connection', col: 'LinkedIn Follow/Connection' },
+    { key: 'onboarding_complete',        label: 'Onboarding complete',       col: 'Onboarding Complete' },
+  ];
+
+  // Badge review. Hidden entirely until Member List carries the badge columns —
+  // see badgeColumnsPresent().
+  const badgeSectionHtml = badgeColumnsPresent() ? `
+    <div class="section-title">Badge</div>
+    <div class="detail-grid">
+      <div class="field-row">
+        <label>Status</label>
+        <div class="value">${badgePill(m)}</div>
+      </div>
+      <div class="field-row">
+        <label>Artwork</label>
+        <div class="value">${badgeArtworkLink(m, 'View drafted badge →')}</div>
+      </div>
+      ${fieldRow('Drafted &amp; sent', m.badge_sent ? fmtDate(m.badge_sent) : '—', null)}
+      ${fieldRow('Approved', m.badge_approved ? fmtDate(m.badge_approved) : '—', null)}
+      ${m.badge_order_id
+        ? fieldRow('Order ID', String(m.badge_order_id), String(m.badge_order_id))
+        : ''}
+    </div>
+    <div class="action-bar" style="margin-top:12px">${badgeActions(m)}</div>` : '';
+
+  const checklistHtml = hasPaidDate
+    ? `<ul class="checklist">
+        ${checklistSteps.map(step => {
+          const done = onboarding[step.key] || (step.key === 'onboarding_complete' && m.onboarding_complete);
+
+          // The badge step is not a thing anyone ticks: it is a four-stage workflow with
+          // its own state on Member List. Show where the badge actually is, and leave the
+          // controls to the Badge section above rather than repeating them here. Without
+          // the badge columns it stays an ordinary tick-box.
+          if (step.key === 'badge_made' && badgeColumnsPresent()) {
+            const bs = badgeStatusOf(m);
+            const stage = {
+              [BADGE_STATUS_DRAFT]:    'Badge drafted — awaiting their reply',
+              [BADGE_STATUS_CHANGES]:  'Badge changes requested — needs redrafting',
+              [BADGE_STATUS_APPROVED]: 'Badge approved — waiting on the next order',
+              [BADGE_STATUS_ORDERED]:  'Badge ordered',
+            }[bs] || (isLegacyBadge(m) ? 'Badge made before the workflow' : 'Badge not drafted yet');
+            const at = done || (bs === BADGE_STATUS_APPROVED && m.badge_approved) || m.badge_sent;
+            return `<li>
+              <span class="check-icon">${done || bs === BADGE_STATUS_ORDERED ? '✅' : '⬜'}</span>
+              <span class="check-label">${stage}</span>
+              <span class="check-date">${at ? fmtDate(at) : ''}</span>
+            </li>`;
+          }
+
+          return `<li>
+            <span class="check-icon">${done ? '✅' : '⬜'}</span>
+            <span class="check-label">${step.label}</span>
+            <span class="check-date">${done && done !== true ? fmtDate(done) : ''}</span>
+            ${!done ? `<button class="btn btn-ghost btn-sm"
+                onclick="markChecklistStep('${esc(m.email)}','${step.key}','${esc(step.col)}')">
+                Mark done</button>` : ''}
+          </li>`;
+        }).join('')}
+      </ul>`
+    : `<p style="font-size:.8rem;color:var(--muted)">Checklist unlocks when Invoice Paid Date is set.</p>`;
+
+  return `
+    <div class="section-title">Member Details</div>
+    <div class="detail-grid">
+      ${fieldRow('Name',    name,         m.email)}
+      ${fieldRow('Email',   m.email,      m.email)}
+      ${fieldRow('Phone',   m.phone,      m.phone)}
+      ${fieldRow('TM ID',   m.ti_number || '—', m.ti_number)}
+      ${fieldRow('Category', m.membership_category || '—', null)}
+      ${fieldRow('Period',  m.period || '—', null)}
+      ${fieldRow('Until',   m.membership_until ? fmtDate(m.membership_until) : '—', null)}
+      ${m.linkedin_profile_url
+        ? `<div class="field-row"><label>LinkedIn</label><div class="value">
+            <a href="${esc(m.linkedin_profile_url)}" target="_blank" rel="noopener">${esc(m.linkedin_profile_url)}</a>
+           </div></div>`
+        : ''}
+    </div>
+
+    <div class="section-title">Payment Status</div>
+    <div class="detail-grid">
+      ${fieldRow('Join Date', m.join_date ? fmtDate(m.join_date) : '—', null)}
+      ${fieldRow('Invoice Paid Date', m.invoice_paid_date ? fmtDate(m.invoice_paid_date) : 'Not set', null)}
+      ${fieldRow('TI Payment Submitted', m.ti_payment_submitted ? fmtDate(m.ti_payment_submitted) : 'Not submitted', null)}
+    </div>
+    ${(() => {
+      const memberEmail = (m.email || '').toLowerCase();
+      const inv = invoicesList.slice().reverse().find(i =>
+        (i.email || '').toLowerCase() === memberEmail
+      );
+      if (!inv) return '';
+      const lines = transactionsList.filter(t => (t.email || '').toLowerCase() === memberEmail);
+      return `
+        <p style="font-size:.8rem;color:var(--muted);margin:8px 0 4px">
+          Invoice #${esc(inv.invoice_number)}
+          ${inv.invoice_link ? `<a href="${esc(inv.invoice_link)}" target="_blank" rel="noopener" style="margin-left:8px">View PDF →</a>` : ''}
+        </p>
+        <table class="invoice-lines">
+          <thead><tr><th>SKU</th><th style="text-align:right">Qty</th></tr></thead>
+          <tbody>
+            ${lines.length
+              ? lines.map(t => `<tr><td>${esc(t.sku || t.sku_name || '')}</td><td style="text-align:right">${esc(String(t.qty || ''))}</td></tr>`).join('')
+              : '<tr><td colspan="2" style="color:var(--muted);font-style:italic">No line items found</td></tr>'}
+          </tbody>
+        </table>`;
+    })()}
+
+    <!-- renderInvoiceEditor() writes here. Without this container it takes its
+         early-return guard and the Generate Invoice button silently does nothing,
+         which is exactly what happened for every renewing member. -->
+    <div id="invoice-editor">
+      <!-- Line item editor populated by renderInvoiceEditor() -->
+    </div>
+
+    <div class="action-bar" style="margin-top:12px; padding-top:12px; border-top:1px solid var(--border)">
+      ${!hasPaidDate
+        ? `<button class="btn btn-primary btn-sm" onclick="markPaid('${esc(m.email)}')">Mark as Paid</button>`
+        : `<button class="btn btn-ghost btn-sm" onclick="markPaid('${esc(m.email)}')">Update Paid Date</button>`}
+      ${hasPaidDate && !m.ti_payment_submitted
+        ? `<button class="btn btn-primary btn-sm" onclick="markTISubmitted('${esc(m.email)}')">TI Payment Submitted</button>`
+        : ''}
+      ${isLapsed
+        ? `<button class="btn btn-warning btn-sm" onclick="reinstateFlow('${esc(m.email)}')">Reinstate</button>`
+        : ''}
+      ${isActive
+        ? `<button class="btn btn-ghost btn-sm" onclick="sendRenewalInvoice('${esc(m.email)}')">Send Renewal Invoice</button>`
+        : ''}
+      <div class="spacer"></div>
+      <button class="btn btn-ghost btn-sm" onclick="generateInvoiceFlow('${esc(m.email)}')">Generate Invoice</button>
+    </div>
+
+    ${badgeSectionHtml}
+
+    <div class="section-title">Onboarding Checklist</div>
+    ${checklistHtml}`;
+}
+
+// ══════════════════════════════════════════════════════════════════════════════
+// DIETARY VIEW
+// ══════════════════════════════════════════════════════════════════════════════
+
+function renderDietary() {
+  const active = memberList.filter(m => norm(m.status) === 'active');
+  const rows   = active.map(m => {
+    const diet = dietaryList.find(d =>
+      (d.member_email || '').toLowerCase() === (m.email || '').toLowerCase()
+    ) || {};
+    return `<tr>
+      <td>${esc(m.invoicename || (m.first + ' ' + m.last))}</td>
+      <td>${esc(diet.dietary_requirements || 'None')}</td>
+      <td>${esc(diet.allergies || '—')}</td>
+      <td>${esc(diet.accessibility_needs || '—')}</td>
+    </tr>`;
+  });
+
+  return `
+    <div class="card">
+      <h2>Dietary Requirements — Active Members (${active.length})</h2>
+      <p style="font-size:.8rem;color:var(--muted);margin-bottom:12px">Print this page for venue booking.</p>
+      <div style="overflow-x:auto">
+        <table>
+          <thead><tr>
+            <th>Name</th><th>Dietary</th><th>Allergies</th><th>Accessibility</th>
+          </tr></thead>
+          <tbody>${rows.join('') || '<tr><td colspan="4" style="color:var(--muted);text-align:center;padding:24px">No active members.</td></tr>'}</tbody>
+        </table>
+      </div>
+    </div>`;
+}
+
+// ══════════════════════════════════════════════════════════════════════════════
+// EDUCATION VIEW
+// ══════════════════════════════════════════════════════════════════════════════
+
+function renderEducation() {
+  const active = memberList.filter(m => norm(m.status) === 'active');
+  const rows   = active.map(m => {
+    const edu = educationList.find(e =>
+      (e.member_email || '').toLowerCase() === (m.email || '').toLowerCase()
+    ) || {};
+    const name = m.invoicename || ((m.first || '') + ' ' + (m.last || '')).trim();
+    return `<tr>
+      <td>${esc(name)}</td>
+      <td>${esc(edu.edu_objectives || '—')}</td>
+      <td>${esc(edu.main_edu_path || '—')}</td>
+      <td style="text-align:center">${esc(edu.levels_to_complete || '—')}</td>
+      <td>${esc(edu.basecamp_progress || '—')}</td>
+      <td>${esc(edu.easy_speak_progress || '—')}</td>
+      <td>${esc(edu.levels_achieved || '—')}</td>
+      <td>${esc(edu.next_slot || '—')}</td>
+    </tr>`;
+  });
+
+  return `
+    <div class="card">
+      <h2>Education — Active Members (${active.length})</h2>
+      <div style="overflow-x:auto">
+        <table>
+          <thead><tr>
+            <th>Name</th>
+            <th>Objectives</th>
+            <th>Path</th>
+            <th style="text-align:center">Levels to Go</th>
+            <th>Basecamp</th>
+            <th>Easy-Speak</th>
+            <th>Levels Achieved</th>
+            <th>Next Slot</th>
+          </tr></thead>
+          <tbody>${rows.join('') || '<tr><td colspan="8" style="color:var(--muted);text-align:center;padding:24px">No active members.</td></tr>'}</tbody>
+        </table>
+      </div>
+    </div>`;
+}
+
+// ══════════════════════════════════════════════════════════════════════════════
+// ERRORS VIEW
+// ══════════════════════════════════════════════════════════════════════════════
+
+function renderErrors() {
+  const unread = errorsList.filter(e => !e.reviewed_by);
+  const rows   = errorsList.map((e, idx) => {
+    const reviewed = !!e.reviewed_by;
+    return `<tr style="${reviewed ? 'opacity:.5' : ''}">
+      <td style="white-space:nowrap">${fmtDate(e.timestamp)}</td>
+      <td>${esc(e.email || '—')}</td>
+      <td style="max-width:340px;word-break:break-word">${esc(e.error_message || '')}</td>
+      <td>
+        ${reviewed
+          ? `<span style="font-size:.75rem;color:var(--muted)">✓ ${esc(e.reviewed_by)}</span>`
+          : `<button class="btn btn-ghost btn-sm" onclick="dismissError(${e._rowNumber})">Dismiss</button>`}
+      </td>
+    </tr>`;
+  });
+
+  return `
+    <div class="card">
+      <h2>Errors <span style="font-weight:400;color:var(--muted)">${unread.length} unread</span></h2>
+      <div style="overflow-x:auto">
+        <table>
+          <thead><tr>
+            <th>Time</th><th>Email</th><th>Message</th><th></th>
+          </tr></thead>
+          <tbody>${rows.join('') || '<tr><td colspan="4" style="color:var(--muted);text-align:center;padding:24px">No errors.</td></tr>'}</tbody>
+        </table>
+      </div>
+    </div>`;
+}
+
+// ══════════════════════════════════════════════════════════════════════════════
+// RESOURCES VIEW
+// ══════════════════════════════════════════════════════════════════════════════
+
+function renderResources() {
+  const runbooks = [
+    {
+      title:       'President Handover',
+      alias:       'Supreme Chancellor',
+      description: 'Operational handover notes for the President / Supreme Chancellor role.',
+      url:         'https://docs.google.com/document/d/1dy3Z1Z1flT7tztdlveiwbtnMVvUktkonbauyHznkWp0/edit',
+    },
+    {
+      title:       'Treasurer Handover',
+      alias:       'Guardian of Credit',
+      description: 'Bank signatory steps, vendor contacts, automation links, and financial procedures.',
+      url:         'https://docs.google.com/document/d/1_eDxA9tOf-LoAIIOHshAUdlnW0JM0WS4Hi-zifuxlAc/edit',
+    },
+    {
+      title:       'VP Education Handover',
+      alias:       'Jedi Journey Guide',
+      description: 'Educational program: meeting roles, Pathways progress, and approving education awards in Club Central.',
+      url:         'https://docs.google.com/document/d/1oqJUgbiAZxM3YwGsFhaxrbmHvXVelpumU-bJmEbDkEc/edit',
+    },
+    {
+      title:       'VP Membership Handover',
+      alias:       'Force Recruitment Officer',
+      description: 'Membership growth and retention: the guest-to-member pipeline, inductions, and membership campaigns.',
+      url:         'https://docs.google.com/document/d/1SULrBtBp9Me6HWl3a08sjDT09oMthAuw_6DywV6Ar6g/edit',
+    },
+  ];
+
+  const cards = runbooks.map(r => `
+    <a class="resource-card" href="${r.url}" target="_blank" rel="noopener">
+      <div class="resource-title">${esc(r.title)}</div>
+      <div class="resource-alias">${esc(r.alias)}</div>
+      <div class="resource-desc">${esc(r.description)}</div>
+      <div class="resource-link">Open in Google Docs ↗</div>
+    </a>`).join('');
+
+  return `
+    <div class="card">
+      <h2>Committee Resources</h2>
+      <p style="color:var(--muted);font-size:.875rem;margin-bottom:20px">
+        Private handover runbooks — operational how-tos for each committee office.
+        These docs are committee-only and are never published to the public site.
+      </p>
+      <div class="resource-grid">${cards}</div>
+    </div>`;
+}
+
+// ══════════════════════════════════════════════════════════════════════════════
+// ACTIONS
+// ══════════════════════════════════════════════════════════════════════════════
+
+async function retryInvoicePdf(email) {
+  if (!confirm(`Retry PDF generation for ${email}?`)) return;
+  showLoading('Queuing PDF regeneration…');
+  try {
+    const result = await hubPost({ action: 'retryInvoicePdf', memberEmail: email });
+    if (result.error) throw new Error(result.error);
+    await refreshData();
+    showToast('Invoice queued for PDF regeneration. It will generate within ~1 minute.');
+  } catch (err) {
+    showError('Retry failed: ' + err.message);
+  }
+}
+
+async function approveAndSend(email) {
+  if (!confirm(`Approve this application and send invoice to ${email}?`)) return;
+  showLoading('Sending invoice…');
+  try {
+    // If the invoice editor is open and populated, pass its lines to regenerate before sending
+    const editorLines = (() => {
+      const el = document.getElementById('invoice-editor');
+      if (!el || el.dataset.email !== email) return null;
+      const lines = readEditorLines();
+      return lines.length ? lines : null;
+    })();
+    const payload = { action: 'approveAndSendInvoice', memberEmail: email };
+    if (editorLines) payload.lineItems = editorLines;
+    const result = await hubPost(payload);
+    if (result.error) throw new Error(result.error);
+    await refreshData();
+    showView('members');
+    showToast('Invoice sent successfully.');
+  } catch (err) {
+    hideLoading();
+    showError('Failed to send invoice: ' + err.message);
+  }
+}
+
+async function rejectMember(email) {
+  if (!confirm(`Reject ${email}? (You will contact them personally.)`)) return;
+  showLoading('Rejecting…');
+  try {
+    const result = await hubPost({ action: 'rejectMember', memberEmail: email });
+    if (result.error) throw new Error(result.error);
+    await refreshData();
+    showView('members');
+    showToast('Member rejected.');
+  } catch (err) {
+    hideLoading();
+    showError('Failed to reject: ' + err.message);
+  }
+}
+
+async function markPaid(email) {
+  const dateStr = prompt('Invoice paid date (dd/mm/yyyy):', todayAu());
+  if (!dateStr) return;
+  showLoading('Updating…');
+  try {
+    const result = await hubPost({ action: 'markPaid', memberEmail: email, date: dateStr });
+    if (result.error) throw new Error(result.error);
+    await refreshData();
+    openMember(email);
+    showToast('Paid date recorded.');
+  } catch (err) {
+    hideLoading();
+    showError('Failed to mark paid: ' + err.message);
+  }
+}
+
+async function markTISubmitted(email) {
+  const dateStr = prompt('TI payment submission date (dd/mm/yyyy):', todayAu());
+  if (!dateStr) return;
+  showLoading('Updating…');
+  try {
+    const result = await hubPost({ action: 'markTISubmitted', memberEmail: email, date: dateStr });
+    if (result.error) throw new Error(result.error);
+    await refreshData();
+    openMember(email);
+    showToast('TI payment date recorded.');
+  } catch (err) {
+    hideLoading();
+    showError('Failed: ' + err.message);
+  }
+}
+
+async function markChecklistStep(email, key, colName) {
+  showLoading('Updating…');
+  try {
+    const result = await hubPost({ action: 'markChecklistStep', memberEmail: email, key, colName });
+    if (result.error) throw new Error(result.error);
+    await refreshData();
+    openMember(email);
+  } catch (err) {
+    hideLoading();
+    showError('Failed: ' + err.message);
+  }
+}
+
+async function reinstateFlow(email) {
+  const month = prompt(
+    'Joining month for renewal (YYYY-MM):',
+    currentPeriodStart()
+  );
+  if (!month) return;
+  showLoading('Reinstating…');
+  try {
+    const result = await hubPost({ action: 'reinstate', memberEmail: email, joiningMonth: month });
+    if (result.error) throw new Error(result.error);
+    await refreshData();
+    openMember(email);
+    showToast('Renewal invoice generated. Review and send when ready.');
+  } catch (err) {
+    hideLoading();
+    showError('Reinstatement failed: ' + err.message);
+  }
+}
+
+async function sendRenewalInvoice(email) {
+  if (!confirm(`Send renewal invoice to ${email}?`)) return;
+  showLoading('Sending…');
+  try {
+    const result = await hubPost({ action: 'sendRenewalInvoice', memberEmail: email });
+    if (result.error) throw new Error(result.error);
+    await refreshData();
+    openMember(email);
+    showToast('Renewal invoice sent.');
+  } catch (err) {
+    hideLoading();
+    showError('Failed: ' + err.message);
+  }
+}
+
+// ─── INVOICE EDITOR ──────────────────────────────────────────────────────────
+
+/**
+ * Opens the inline invoice line-item editor for a member.
+ * Pre-populates with their existing pending transaction lines.
+ * Used for both "Amend Invoice" (prospect view) and "Generate Invoice" (member mgmt).
+ */
+function generateInvoiceFlow(email) {
+  const memberEmail = email.toLowerCase();
+  // Pre-populate with existing transaction lines for this member
+  const existingLines = transactionsList.filter(t =>
+    (t.email || '').toLowerCase() === memberEmail
+  ).map(t => ({ sku: t.sku || t.sku_name || '', qty: t.qty || '1' }));
+
+  renderInvoiceEditor(email, existingLines.length ? existingLines : [{ sku: '', qty: '1' }]);
+}
+
+/**
+ * Renders the line-item editor into #invoice-editor.
+ * lines: [{sku, qty}]
+ */
+function renderInvoiceEditor(email, lines) {
+  const skuOptions = productsList
+    .map(p => p.sku_name || p.sku || '')
+    .filter(Boolean)
+    .sort();
+
+  const rowsHtml = lines.map((l, i) => `
+    <tr id="inv-row-${i}">
+      <td>
+        <select class="inv-sku" data-row="${i}" style="width:100%;padding:4px 6px;border:1px solid var(--border);border-radius:4px;font-size:.8rem;font-family:inherit">
+          <option value="">— select SKU —</option>
+          ${skuOptions.map(s => `<option value="${esc(s)}" ${s === l.sku ? 'selected' : ''}>${esc(s)}</option>`).join('')}
+        </select>
+      </td>
+      <td style="width:60px">
+        <input type="number" class="inv-qty" data-row="${i}" min="1" value="${esc(String(l.qty || 1))}"
+          style="width:100%;padding:4px 6px;border:1px solid var(--border);border-radius:4px;font-size:.8rem;font-family:inherit">
+      </td>
+      <td style="width:36px;text-align:center">
+        <button class="btn btn-ghost btn-sm" onclick="removeInvoiceLine(${i})" title="Remove">✕</button>
+      </td>
+    </tr>`).join('');
+
+  const editorEl = document.getElementById('invoice-editor');
+  if (!editorEl) return;
+
+  editorEl.innerHTML = `
+    <table class="invoice-lines" id="inv-editor-table">
+      <thead><tr><th>SKU</th><th style="text-align:right">Qty</th><th></th></tr></thead>
+      <tbody>${rowsHtml}</tbody>
+    </table>
+    <div style="display:flex;gap:8px;margin-top:8px;align-items:center">
+      <button class="btn btn-ghost btn-sm" onclick="addInvoiceLine('${esc(email)}')">+ Add line</button>
+      <div class="spacer"></div>
+      <button class="btn btn-primary btn-sm" onclick="saveAmendedInvoice('${esc(email)}')">Generate amended invoice</button>
+    </div>`;
+
+  // Store email on the element for saveAmendedInvoice to read
+  editorEl.dataset.email = email;
+}
+
+function addInvoiceLine(email) {
+  const existing = readEditorLines();
+  existing.push({ sku: '', qty: '1' });
+  renderInvoiceEditor(email, existing);
+}
+
+function removeInvoiceLine(rowIdx) {
+  const email   = document.getElementById('invoice-editor').dataset.email;
+  const lines   = readEditorLines().filter((_, i) => i !== rowIdx);
+  renderInvoiceEditor(email, lines.length ? lines : [{ sku: '', qty: '1' }]);
+}
+
+function readEditorLines() {
+  const skuEls = document.querySelectorAll('.inv-sku');
+  const qtyEls = document.querySelectorAll('.inv-qty');
+  const lines  = [];
+  skuEls.forEach((el, i) => {
+    if (el.value) lines.push({ sku: el.value, qty: qtyEls[i] ? qtyEls[i].value || '1' : '1' });
+  });
+  return lines;
+}
+
+async function saveAmendedInvoice(email) {
+  const lines = readEditorLines();
+  if (!lines.length) { showToast('Add at least one SKU line.'); return; }
+  if (!confirm(`Regenerate invoice for ${email} with ${lines.length} line item(s)?`)) return;
+  showLoading('Generating invoice…');
+  try {
+    const result = await hubPost({ action: 'generateInvoice', memberEmail: email, lineItems: lines });
+    if (result.error) throw new Error(result.error);
+    await refreshData();
+    openMember(email);
+    showToast('Invoice regenerated. Use Approve & Send Invoice when ready.');
+  } catch (err) {
+    hideLoading();
+    showError('Failed to generate invoice: ' + err.message);
+  }
+}
+
+// ─── BADGE WORKFLOW ──────────────────────────────────────────────────────────
+
+/**
+ * Drafts one member's badge and emails it to them for review.
+ *
+ * Asks the server what the badge would print before committing to it. The printed
+ * name is Preferred Name if there is one and the formal First name otherwise, and a
+ * blank Preferred Name is invisible in the hub's normal views — so without this step
+ * the first sight of a wrong name is the member's reply to an email already sent.
+ */
+async function draftBadge(email) {
+  showLoading('Checking what the badge will print…');
+  let preview;
+  try {
+    const result = await hubPost({ action: 'previewBadge', memberEmail: email });
+    if (result.error) throw new Error(result.error);
+    preview = result.preview || {};
+  } catch (err) {
+    hideLoading();
+    showError('Could not read the badge details: ' + err.message);
+    return;
+  }
+  hideLoading();
+
+  if (!preview.eligible) {
+    showError(`Cannot draft a badge: ${preview.reason || 'this member is not due one'}.`);
+    return;
+  }
+
+  const lines = [
+    `Draft a badge for ${email}?`,
+    '',
+    'It will print:',
+    `        ${preview.name}`,
+    `        ${preview.title}`,
+    '',
+  ];
+  if (!preview.usingPreferredName) {
+    lines.push('This member has no Preferred Name, so their formal first name is used.',
+               'Set Preferred Name on Member List first if that is not what they go by.',
+               '');
+  }
+  lines.push('The badge is emailed to them for review as soon as you confirm.');
+  if (!confirm(lines.join('\n'))) return;
+
+  showLoading('Drafting and emailing the badge…');
+  try {
+    const result = await hubPost({ action: 'draftBadge', memberEmail: email });
+    if (result.error) throw new Error(result.error);
+    await refreshData();
+    if (currentView === 'member-detail') openMember(email);
+    showToast(result.message || 'Badge drafted and emailed for review.');
+  } catch (err) {
+    hideLoading();
+    showError('Failed to draft badge: ' + err.message);
+  }
+}
+
+async function approveBadge(email) {
+  if (!confirm(`Approve the badge for ${email}?\n\nIt will be included in the next badge order.`)) return;
+  showLoading('Approving badge…');
+  try {
+    const result = await hubPost({ action: 'approveBadge', memberEmail: email });
+    if (result.error) throw new Error(result.error);
+    await refreshData();
+    if (currentView === 'member-detail') openMember(email);
+    showToast(result.message || 'Badge approved.');
+  } catch (err) {
+    hideLoading();
+    showError('Failed to approve badge: ' + err.message);
+  }
+}
+
+async function requestBadgeChanges(email) {
+  const notes = prompt(
+    `What needs to change on the badge for ${email}?\n\n` +
+    'This goes in the audit log. The badge is cleared and redrafted on the next ' +
+    'run of GOTO → Badges.');
+  if (notes === null) return;                       // cancelled
+  if (!notes.trim()) {
+    showToast('Say what needs changing so the redraft is actionable.', 'info');
+    return;
+  }
+  showLoading('Sending badge back…');
+  try {
+    const result = await hubPost({ action: 'requestBadgeChanges', memberEmail: email, notes: notes.trim() });
+    if (result.error) throw new Error(result.error);
+    await refreshData();
+    if (currentView === 'member-detail') openMember(email);
+    showToast(result.message || 'Badge sent back for redrafting.');
+  } catch (err) {
+    hideLoading();
+    showError('Failed to request changes: ' + err.message);
+  }
+}
+
+async function dismissError(rowNumber) {
+  showLoading('Dismissing…');
+  try {
+    const result = await hubPost({ action: 'dismissError', rowNumber });
+    if (result.error) throw new Error(result.error);
+    await refreshData();
+    showView('errors');
+    showToast('Error dismissed.');
+  } catch (err) {
+    hideLoading();
+    showError('Failed to dismiss: ' + err.message);
+  }
+}
+
+// ══════════════════════════════════════════════════════════════════════════════
+// HUB APPS SCRIPT CALL
+// ══════════════════════════════════════════════════════════════════════════════
+
+/**
+ * Calls the Apps Script hub endpoint with CORS and returns the parsed JSON.
+ *
+ * Every request includes the current ID token so the server can verify
+ * the caller's identity without any client-side sheet access.
+ *
+ * Throws on network error; callers should check result.error for app errors.
+ */
+async function hubPost(body) {
+  body.idToken = idToken;
+  const resp = await fetch(WEBAPP_URL, {
+    method:  'POST',
+    mode:    'cors',
+    // text/plain;charset=utf-8 is a "simple" CORS request — no preflight OPTIONS.
+    // Apps Script /exec cannot respond to OPTIONS, so non-simple requests fail.
+    // The response already carries Access-Control-Allow-Origin: * so it is readable.
+    headers: { 'Content-Type': 'text/plain;charset=utf-8' },
+    body:    JSON.stringify(body),
+  });
+  if (!resp.ok) throw new Error('Apps Script returned HTTP ' + resp.status);
+  const result = await resp.json();
+  // A2: expired token — force re-sign-in rather than showing a raw auth error.
+  if (result.error === 'AUTH_EXPIRED') {
+    signOut();
+    showError('Session expired — please sign in again.');
+    throw new Error('AUTH_EXPIRED');
+  }
+  return result;
+}
+
+// ══════════════════════════════════════════════════════════════════════════════
+// UI UTILITIES
+// ══════════════════════════════════════════════════════════════════════════════
+
+function rowsToObjects(rows) {
+  if (!rows || rows.length < 2) return [];
+  const headers = rows[0];
+  return rows.slice(1).map((row, i) => {
+    const obj = { _rowNumber: i + 2 };
+    headers.forEach((h, j) => {
+      obj[String(h).replace(/\W+/g, '_').toLowerCase()] = row[j] !== undefined ? row[j] : '';
+    });
+    return obj;
+  }).filter(o => Object.values(o).some(v => v !== '' && v !== undefined));
+}
+
+function fieldRow(label, value, copyValue) {
+  const v = value || '—';
+  const copyBtn = copyValue
+    ? `<button class="copy-btn" onclick="copyText('${esc(copyValue)}')" title="Copy">📋</button>`
+    : '';
+  return `<div class="field-row">
+    <label>${label}</label>
+    <div class="value">${esc(String(v))} ${copyBtn}</div>
+  </div>`;
+}
+
+function copyText(text) {
+  navigator.clipboard.writeText(text).then(() => showToast('Copied!'));
+}
+
+function fmtDate(d) {
+  if (!d) return '—';
+  const dt = new Date(d);
+  if (isNaN(dt.getTime())) return String(d);
+  return dt.toLocaleDateString('en-AU', { day: '2-digit', month: 'short', year: 'numeric' });
+}
+
+function todayAu() {
+  return new Date().toLocaleDateString('en-AU', { day:'2-digit', month:'2-digit', year:'numeric' }).replace(/\//g, '/');
+}
+
+function parseDate(str) {
+  // Parse dd/mm/yyyy → Date
+  const parts = str.split('/');
+  if (parts.length === 3) return new Date(+parts[2], +parts[1]-1, +parts[0]).toISOString().split('T')[0];
+  return str;
+}
+
+function currentPeriodStart() {
+  const now = new Date();
+  const mo  = now.getMonth() + 1;
+  if (mo >= 5 && mo <= 9) return `${now.getFullYear()}-05`;
+  if (mo >= 10)            return `${now.getFullYear()}-10`;
+  return `${now.getFullYear() - 1}-10`;
+}
+
+function norm(v) { return (v || '').toString().trim().toLowerCase(); }
+function esc(s)  { return String(s || '').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;'); }
+
+
+function showLoading(text) {
+  document.getElementById('loading-text').textContent = text || 'Loading…';
+  document.getElementById('loading-overlay').classList.remove('hidden');
+}
+function hideLoading() {
+  document.getElementById('loading-overlay').classList.add('hidden');
+}
+
+let _toast;
+function showToast(msg, type) {
+  clearTimeout(_toast);
+  const cls = { error: 'alert-error', info: 'alert-info' }[type] || 'alert-success';
+  const el  = document.createElement('div');
+  el.className = `alert ${cls}`;
+  el.style.cssText = 'position:fixed;bottom:20px;right:20px;z-index:9999;max-width:340px;box-shadow:0 4px 12px rgba(0,0,0,.15)';
+  el.textContent = msg;
+  document.body.appendChild(el);
+  _toast = setTimeout(() => el.remove(), 4000);
+}
+
+function showError(msg) {
+  hideLoading();
+  showToast(msg, 'error');
+}
+
+function updateBadges() {
+  const prospects   = memberList.filter(m => norm(m.status) === 'prospect').length;
+  const errorsUnread = errorsList.filter(e => !e.reviewed_by).length;
+  const awaitingBadges = badgeColumnsPresent() ? badgesAwaitingApproval().length : 0;
+  const bP = document.getElementById('badge-prospects');
+  const bE = document.getElementById('badge-errors');
+  const bB = document.getElementById('badge-badges');
+  if (bP) { bP.textContent = prospects;    bP.style.display = prospects   ? '' : 'none'; }
+  if (bE) { bE.textContent = errorsUnread; bE.style.display = errorsUnread ? '' : 'none'; }
+  if (bB) { bB.textContent = awaitingBadges; bB.style.display = awaitingBadges ? '' : 'none'; }
+}
+</script>
+
+</body>
+</html>
