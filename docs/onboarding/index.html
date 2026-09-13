@@ -711,14 +711,14 @@ function renderMembers() {
     if (f.status && (m.status || '') !== f.status) return false;
     if (f.text) {
       const t = f.text.toLowerCase();
-      return (m.invoicename || m.first + ' ' + m.last || '').toLowerCase().includes(t)
+      return (displayName(m) + ' ' + legalName(m)).toLowerCase().includes(t)
           || (m.email || '').toLowerCase().includes(t);
     }
     return true;
   });
 
   const rowsHtml = rows.map(m => {
-    const name     = m.invoicename || ((m.first || '') + ' ' + (m.last || '')).trim();
+    const name     = displayName(m);
     const status   = m.status || '';
     const until    = m.membership_until ? fmtDate(m.membership_until) : '—';
     const onb      = norm(m.onboarding_complete) === 'true' ? '✓' : '';
@@ -907,7 +907,7 @@ function renderBadges() {
   });
 
   const rowsHtml = rows.map(m => {
-    const name = m.invoicename || ((m.first || '') + ' ' + (m.last || '')).trim();
+    const name = displayName(m);
     return `<tr>
       <td><a href="#" onclick="openMember('${esc(m.email || '')}'); return false;">${esc(name)}</a></td>
       <td><a href="mailto:${esc(m.email)}">${esc(m.email || '')}</a></td>
@@ -957,7 +957,7 @@ function renderMemberDetail(data) {
   if (!data || !data.member) return '<p>Member not found.</p>';
   const m      = data.member;
   const status = (m.status || '').trim();
-  const name   = m.invoicename || ((m.first || '') + ' ' + (m.last || '')).trim();
+  const name   = displayName(m);
 
   const onboarding = onboardingList.find(o =>
     (o.member_email || '').toLowerCase() === (m.email || '').toLowerCase()
@@ -970,7 +970,10 @@ function renderMemberDetail(data) {
   const isProspect = (status === 'Prospect');
   const isLapsed   = (status === 'Lapsed');
 
-  const googleSearch = `https://www.google.com/search?q=${encodeURIComponent(name + ' ' + (m.invoicename || ''))}`;
+  // Legal name only — this link is for identity checking against public
+  // records (CONTEXT.md §4). Previously concatenated `name` with InvoiceName,
+  // which were the same string whenever InvoiceName was set.
+  const googleSearch = `https://www.google.com/search?q=${encodeURIComponent(legalName(m))}`;
 
   let html = `
     <button class="back-btn" onclick="showView('members')">← Back to Members</button>
@@ -1000,6 +1003,8 @@ function renderMemberDetail(data) {
 // ─────────────────────────────────────────────────────────────────────────────
 function renderApplicationReview(m, invoice, onboarding, googleSearch, name) {
   const isPendingReview = invoice && norm(invoice.email_sent) === 'pending review';
+  // `name` is the display name; the legal name is what goes into Club Central.
+  const legal = legalName(m);
 
   // Line items from Transactions tab, matched by email
   const memberEmail = (m.email || '').toLowerCase();
@@ -1019,7 +1024,8 @@ function renderApplicationReview(m, invoice, onboarding, googleSearch, name) {
   return `
     <div class="section-title">Applicant Details</div>
     <div class="detail-grid">
-      ${fieldRow('Name',        name,            m.email)}
+      ${fieldRow('Preferred name', name, null)}
+      ${legal && legal !== name ? fieldRow('Legal name (TI / invoice)', legal, legal) : ''}
       ${fieldRow('Email',       m.email,         m.email)}
       ${fieldRow('Phone',       m.phone,         m.phone)}
       ${fieldRow('WhatsApp',    m.whatsapp || m.phone, m.whatsapp || m.phone)}
@@ -1088,7 +1094,7 @@ function renderApplicationReview(m, invoice, onboarding, googleSearch, name) {
 // Member Management section
 // ─────────────────────────────────────────────────────────────────────────────
 function renderMemberManagement(m, invoice, onboarding, isLapsed) {
-  const name        = m.invoicename || ((m.first || '') + ' ' + (m.last || '')).trim();
+  const name        = displayName(m);
   const hasPaidDate = !!m.invoice_paid_date;
   const isActive    = norm(m.status) === 'active';
 
@@ -1249,7 +1255,7 @@ function renderDietary() {
       (d.member_email || '').toLowerCase() === (m.email || '').toLowerCase()
     ) || {};
     return `<tr>
-      <td>${esc(m.invoicename || (m.first + ' ' + m.last))}</td>
+      <td>${esc(displayName(m))}</td>
       <td>${esc(diet.dietary_requirements || 'None')}</td>
       <td>${esc(diet.allergies || '—')}</td>
       <td>${esc(diet.accessibility_needs || '—')}</td>
@@ -1281,7 +1287,7 @@ function renderEducation() {
     const edu = educationList.find(e =>
       (e.member_email || '').toLowerCase() === (m.email || '').toLowerCase()
     ) || {};
-    const name = m.invoicename || ((m.first || '') + ' ' + (m.last || '')).trim();
+    const name = displayName(m);
     return `<tr>
       <td>${esc(name)}</td>
       <td>${esc(edu.edu_objectives || '—')}</td>
@@ -1794,6 +1800,36 @@ function rowsToObjects(rows) {
     });
     return obj;
   }).filter(o => Object.values(o).some(v => v !== '' && v !== undefined));
+}
+
+/**
+ * The name the member asked to be called: Preferred Name if set, otherwise
+ * their first name, followed by the surname. Deliberately not InvoiceName,
+ * which may be a company or a formal legal name.
+ *
+ * Mirrors resolveBadgeName_() in the Apps Script backend — what the hub shows
+ * and what gets printed on the namebadge must agree. The legacy 'Prefered Name'
+ * misspelling is still accepted so rows predating the fix_schema.js rename
+ * resolve too.
+ */
+function displayName(m) {
+  const preferred = (m.preferred_name || m.prefered_name || '').toString().trim();
+  const first     = (m.first || '').toString().trim();
+  const last      = (m.last  || '').toString().trim();
+  const printed   = [(preferred || first), last].filter(Boolean).join(' ');
+  // Fall back to InvoiceName rather than rendering a blank name.
+  return printed || (m.invoicename || '').toString().trim();
+}
+
+/**
+ * Legal / billing name — for Toastmasters International, Club Central and
+ * invoices. InvoiceName wins; first + last is only a fallback.
+ */
+function legalName(m) {
+  const invoice = (m.invoicename || '').toString().trim();
+  if (invoice) return invoice;
+  return [(m.first || '').toString().trim(), (m.last || '').toString().trim()]
+    .filter(Boolean).join(' ');
 }
 
 function fieldRow(label, value, copyValue) {

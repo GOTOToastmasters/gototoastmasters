@@ -12,6 +12,7 @@
  *   - onboarding checklist includes the new Member Goals + LinkedIn steps
  *     (feat/onboarding-checklist-steps)
  *   - dashboard reflects the loaded data (prospect count, signed-in email)
+ *   - display name resolves to Preferred Name, not InvoiceName (issue #29)
  */
 'use strict';
 
@@ -135,6 +136,123 @@ async function signIn(fetchImpl) {
     const { window } = await loadPage(PAGE);
     const html = window.renderMemberManagement({ email: 'x@x.com', first: 'X', last: 'Y', status: 'Prospect' }, null, {}, false);
     A.ok(html.includes('Checklist unlocks when Invoice Paid Date is set'), 'checklist locked without a paid date');
+  }
+
+
+  A.section('hub — display name is the preferred name, not the invoice name');
+  {
+    // Fixtures go through the real getAll → rowsToObjects path so header
+    // normalisation ('Preferred Name' → preferred_name) is exercised too.
+    const HEADERS = ['First', 'Last', 'Preferred Name', 'InvoiceName', 'Email', 'Status',
+                     'Invoice Paid Date', 'TI Payment Submitted', 'Onboarding Complete', 'Membership Until'];
+    const DATA = {
+      data: {
+        'Member List': [
+          HEADERS,
+          // preferred name set, and an InvoiceName that differs
+          ['Robert', 'Kenefeck', 'Bob', 'Robert J Kenefeck', 'bob@x.com', 'Active', '01/07/2026', '', '', ''],
+          // no preferred name → falls back to First
+          ['Jane', 'Smith', '', 'Jane Smith', 'jane@x.com', 'Active', '01/07/2026', '', '', ''],
+          // no name parts at all → falls back to InvoiceName (company billing)
+          ['', '', '', 'Acme Pty Ltd', 'acme@x.com', 'Active', '01/07/2026', '', '', ''],
+          // a prospect, for the application review card
+          ['Ann', 'Prospect', 'Annie', 'Ann R Prospect', 'ann@x.com', 'Prospect', '', '', '', ''],
+        ],
+        'Dietary': [
+          ['Member Email', 'Dietary Requirements', 'Allergies', 'Accessibility Needs'],
+          ['bob@x.com', 'Vegetarian', 'Nuts', ''],
+        ],
+        'Education': [
+          ['Member Email', 'Edu Objectives', 'Main Edu Path', 'Levels To Complete'],
+          ['bob@x.com', 'Level 3', 'Presentation Mastery', '2'],
+        ],
+        'Onboarding': [], 'Invoices': [], 'Transactions': [], 'Errors': [],
+      },
+    };
+
+    const { window } = await signIn(serverFetch((b) => (b.action === 'getAll' ? DATA : {})));
+    const doc = window.document;
+
+    // ── members table ───────────────────────────────────────────────────────
+    const members = window.renderMembers();
+    A.ok(members.includes('Bob Kenefeck'), 'members table shows the preferred name "Bob Kenefeck"');
+    A.ok(!members.includes('Robert J Kenefeck'), 'members table does NOT show the invoice name');
+    A.ok(members.includes('Jane Smith'), 'no preferred name → falls back to First + Last');
+    A.ok(members.includes('Acme Pty Ltd'), 'no name parts at all → falls back to InvoiceName');
+    A.ok(!/undefined/.test(members), 'no "undefined" leaks into the rendered table');
+    A.ok(!/<td>\s{2,}[A-Za-z]/.test(members), 'no stray whitespace from blank name parts');
+
+    // ── search matches either name ──────────────────────────────────────────
+    doc.getElementById('main-content').innerHTML = members;
+    window.showView('members');
+    const search = doc.querySelector('.filter-bar input[type="text"]');
+    search.value = 'Robert';
+    search.dispatchEvent(new window.Event('input', { bubbles: true }));
+    const filtered = doc.getElementById('main-content').innerHTML;
+    A.ok(filtered.includes('bob@x.com'), 'searching the legal name "Robert" finds the member shown as "Bob"');
+    A.ok(!filtered.includes('jane@x.com'), 'search still excludes non-matching members');
+
+    // ── dietary + education views ───────────────────────────────────────────
+    const dietary = window.renderDietary();
+    A.ok(dietary.includes('Bob Kenefeck'), 'dietary view uses the display name');
+    A.ok(!dietary.includes('Robert J Kenefeck'), 'dietary view does not use the invoice name');
+    A.ok(window.renderEducation().includes('Bob Kenefeck'), 'education view uses the display name');
+  }
+
+  A.section('hub — application review shows both names (Club Central needs the legal one)');
+  {
+    const { window } = await loadPage(PAGE);
+    const prospect = {
+      email: 'ann@x.com', first: 'Ann', last: 'Prospect',
+      preferred_name: 'Annie', invoicename: 'Ann R Prospect', status: 'Prospect',
+    };
+    const html = window.renderMemberDetail({ member: prospect });
+
+    A.ok(html.includes('<h2 style="margin:0">Annie Prospect</h2>'), 'detail heading uses the preferred name');
+    A.ok(html.includes('Preferred name'), 'application review labels the preferred name');
+    A.ok(html.includes('Legal name (TI / invoice)'), 'application review also shows the legal name');
+    A.ok(html.includes('Ann R Prospect'), 'the legal name is rendered for Club Central / TI');
+    A.ok(html.includes("copyText('Ann R Prospect')"), 'copy button carries the LEGAL name, not the preferred one');
+
+    // Google lookup must search the legal name once — it used to be duplicated.
+    const m = html.match(/google\.com\/search\?q=([^"&]*)/);
+    A.ok(m, 'google lookup link present for a prospect without LinkedIn');
+    A.eq(decodeURIComponent(m[1]), 'Ann R Prospect', 'google lookup searches the legal name exactly once');
+  }
+  {
+    // When there is nothing to disambiguate, the second row is not rendered.
+    const { window } = await loadPage(PAGE);
+    const html = window.renderMemberDetail({
+      member: { email: 'j@x.com', first: 'Jane', last: 'Smith', invoicename: 'Jane Smith', status: 'Prospect' },
+    });
+    A.ok(html.includes('Preferred name'), 'preferred name row always rendered');
+    A.ok(!html.includes('Legal name (TI / invoice)'), 'legal name row omitted when it matches the display name');
+  }
+
+  A.section('hub — legacy "Prefered Name" header still resolves');
+  {
+    // fix_schema.js renames the misspelled column, but a sheet predating that
+    // rename must still resolve — resolveBadgeName_ in the backend does the same.
+    const { window } = await loadPage(PAGE);
+    const objs = window.rowsToObjects([
+      ['First', 'Last', 'Prefered Name', 'InvoiceName', 'Email'],
+      ['Robert', 'Kenefeck', 'Bob', 'Robert J Kenefeck', 'bob@x.com'],
+    ]);
+    A.eq(objs[0].prefered_name, 'Bob', 'legacy header normalises to prefered_name');
+    A.eq(window.displayName(objs[0]), 'Bob Kenefeck', 'displayName accepts the legacy misspelling');
+    A.eq(window.legalName(objs[0]), 'Robert J Kenefeck', 'legalName is unaffected');
+  }
+
+  A.section('hub — name helper edge cases');
+  {
+    const { window } = await loadPage(PAGE);
+    A.eq(window.displayName({}), '', 'displayName of an empty row is an empty string, not "undefined"');
+    A.eq(window.legalName({}), '', 'legalName of an empty row is an empty string');
+    A.eq(window.displayName({ first: 'Solo' }), 'Solo', 'first name only — no trailing space');
+    A.eq(window.displayName({ last: 'Surname' }), 'Surname', 'surname only — no leading space');
+    A.eq(window.displayName({ preferred_name: '  Bob  ', last: '  Kenefeck ' }), 'Bob Kenefeck', 'whitespace trimmed on both parts');
+    A.eq(window.displayName({ invoicename: 'Acme Pty Ltd' }), 'Acme Pty Ltd', 'falls back to InvoiceName when no name parts');
+    A.eq(window.legalName({ first: 'Jane', last: 'Smith' }), 'Jane Smith', 'legalName falls back to first + last without InvoiceName');
   }
 
   process.exit(A.summary() ? 0 : 1);
