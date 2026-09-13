@@ -1236,8 +1236,8 @@ function renderMemberManagement(m, invoice, onboarding, isLapsed) {
 
     <div class="action-bar" style="margin-top:12px; padding-top:12px; border-top:1px solid var(--border)">
       ${!hasPaidDate
-        ? `<button class="btn btn-primary btn-sm" onclick="markPaid('${esc(m.email)}')">Mark as Paid</button>`
-        : `<button class="btn btn-ghost btn-sm" onclick="markPaid('${esc(m.email)}')">Update Paid Date</button>`}
+        ? `<button class="btn btn-primary btn-sm" onclick="markPaidForMember('${esc(m.email)}')">Mark as Paid</button>`
+        : `<button class="btn btn-ghost btn-sm" onclick="showView('invoices')">View Invoices</button>`}
       ${hasPaidDate && !m.ti_payment_submitted
         ? `<button class="btn btn-primary btn-sm" onclick="markTISubmitted('${esc(m.email)}')">TI Payment Submitted</button>`
         : ''}
@@ -1364,6 +1364,9 @@ function renderInvoices() {
         ? `<span style="color:var(--error);font-weight:600">${days}</span>` : '—'}</td>
       <td>${invoicePill(i)}</td>
       <td style="white-space:nowrap">
+        ${isUnpaidInvoice(i)
+          ? `<button class="btn btn-primary btn-sm" onclick="markPaid('${esc(String(i.invoice_number))}')">Mark as Paid</button>`
+          : ''}
         ${i.email ? `<button class="btn btn-ghost btn-sm" onclick="openMember('${esc(i.email)}')">Open member</button>` : ''}
         ${i.invoice_link
           ? `<a class="btn btn-ghost btn-sm" href="${esc(i.invoice_link)}" target="_blank" rel="noopener">View PDF</a>`
@@ -1626,20 +1629,49 @@ async function rejectMember(email) {
   }
 }
 
-async function markPaid(email) {
-  const dateStr = prompt('Invoice paid date (dd/mm/yyyy):', todayAu());
+/**
+ * Records payment against ONE invoice. Payment is per invoice, not per member:
+ * a member can hold two outstanding invoices and only one of them may have
+ * cleared. The backend derives Member List 'Invoice Paid Date' from this.
+ *
+ * @param {string} invoiceNumber
+ * @param {string} [returnToEmail] member to reopen afterwards; omit to stay on
+ *                                 the invoices view.
+ */
+async function markPaid(invoiceNumber, returnToEmail) {
+  if (!invoiceNumber) { showError('No invoice selected.'); return; }
+  const dateStr = prompt(`Paid date for invoice ${invoiceNumber} (dd/mm/yyyy):`, todayAu());
   if (!dateStr) return;
   showLoading('Updating…');
   try {
-    const result = await hubPost({ action: 'markPaid', memberEmail: email, date: dateStr });
+    const result = await hubPost({ action: 'markPaid', invoiceNumber: String(invoiceNumber), date: dateStr });
     if (result.error) throw new Error(result.error);
     await refreshData();
-    openMember(email);
+    if (returnToEmail) openMember(returnToEmail); else showView('invoices');
     showToast('Paid date recorded.');
   } catch (err) {
     hideLoading();
     showError('Failed to mark paid: ' + err.message);
   }
+}
+
+/**
+ * Mark as Paid from a member's page. With exactly one invoice outstanding it is
+ * chosen automatically, so the treasurer's click count does not go up; with
+ * several, they have to say which, because that is the ambiguity this whole
+ * change exists to remove.
+ */
+function markPaidForMember(email) {
+  const open = invoicesList.filter(i =>
+    (i.email || '').toLowerCase() === (email || '').toLowerCase() && isUnpaidInvoice(i));
+  if (open.length === 1) return markPaid(open[0].invoice_number, email);
+  if (open.length === 0) {
+    showError('No outstanding invoice for this member. Use the Invoices view to correct a paid date.');
+    return;
+  }
+  _invoiceFilter = 'unpaid';
+  showView('invoices');
+  showToast(`${open.length} outstanding invoices — pick the one that was paid.`);
 }
 
 async function markTISubmitted(email) {
