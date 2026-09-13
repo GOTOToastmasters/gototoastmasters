@@ -1,0 +1,12 @@
+{
+  "name": "goto-frontend-tests",
+  "private": true,
+  "version": "1.0.0",
+  "description": "jsdom logic tests for the GOTO join form and onboarding hub",
+  "scripts": {
+    "test": "node run.js"
+  },
+  "devDependencies": {
+    "jsdom": "^24.1.0"
+  }
+}
