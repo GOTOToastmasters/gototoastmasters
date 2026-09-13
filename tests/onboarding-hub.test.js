@@ -13,6 +13,7 @@
  *     (feat/onboarding-checklist-steps)
  *   - dashboard reflects the loaded data (prospect count, signed-in email)
  *   - display name resolves to Preferred Name, not InvoiceName (issue #29)
+ *   - unpaid / overdue invoice derivation + invoices view (issue #30)
  */
 'use strict';
 
@@ -253,6 +254,143 @@ async function signIn(fetchImpl) {
     A.eq(window.displayName({ preferred_name: '  Bob  ', last: '  Kenefeck ' }), 'Bob Kenefeck', 'whitespace trimmed on both parts');
     A.eq(window.displayName({ invoicename: 'Acme Pty Ltd' }), 'Acme Pty Ltd', 'falls back to InvoiceName when no name parts');
     A.eq(window.legalName({ first: 'Jane', last: 'Smith' }), 'Jane Smith', 'legalName falls back to first + last without InvoiceName');
+  }
+
+
+  A.section('hub — unpaid / overdue invoice derivation');
+  {
+    // Fixed clock so "overdue" arithmetic is deterministic.
+    const NOW = new Date(2026, 8, 15); // 15 Sep 2026, local
+    const past   = '01/08/2026';
+    const future = '01/10/2026';
+
+    const INV_HEADERS = ['Invoice Number', 'Invoice Date', 'Billing Name', 'Email', 'Notes',
+                         'Amount Due', 'Due Date', 'Invoice Link', 'Email Sent', 'PDF Status',
+                         'Paid Date', 'Invoice Status'];
+    const inv = (num, email, due, emailSent, paidDate, status) =>
+      [num, '01/07/2026', 'Billing Name', email, '', '340', due, '', emailSent, 'Generated', paidDate, status];
+
+    const DATA = {
+      data: {
+        'Member List': [
+          ['First', 'Last', 'Email', 'Status'],
+          ['Leslie', 'Shroot', 'leslie@x.com', 'Active'],
+        ],
+        'Invoices': [
+          INV_HEADERS,
+          inv('2025064', 'leslie@x.com', past,   'Sent',           '',           ''),        // unpaid + overdue
+          inv('2025065', 'leslie@x.com', future, 'Sent',           '',           'Live'),    // unpaid, not overdue
+          inv('2025080', 'pend@x.com',   past,   'Pending',        '',           ''),        // never counted
+          inv('2025081', 'rev@x.com',    past,   'Pending Review', '',           ''),        // never counted
+          inv('2025082', 'no@x.com',     past,   'No',             '',           ''),        // never counted
+          inv('2025052', 'test@x.com',   past,   'Sent',           '',           'Ignored'), // excluded everywhere
+          inv('2025001', 'darren@x.com', past,   'Sent',           '01/08/2026', ''),        // paid
+        ],
+        'Onboarding': [], 'Transactions': [], 'Errors': [], 'Dietary': [], 'Education': [],
+      },
+    };
+
+    const ctx = await loadPage(PAGE, {
+      fetch: serverFetch((b) => (b.action === 'getAll' ? DATA : {})),
+      url: 'https://gototoastmasters.com.au/onboarding',
+      now: NOW,
+    });
+    stubGoogle(ctx.window);
+    await ctx.window.handleCredentialResponse({
+      credential: makeIdToken({ email: 'chair@gototoastmasters.com.au', name: 'Chair', email_verified: true }),
+    });
+    await waitTicks();
+    const { window } = ctx;
+
+    const nums = (list) => list.map(i => String(i.invoice_number)).sort();
+
+    A.eq(nums(window.unpaidInvoices()), ['2025064', '2025065'], 'unpaid = Sent, no Paid Date, not Ignored');
+    A.eq(nums(window.overdueInvoices()), ['2025064'], 'overdue = unpaid AND due date in the past');
+
+    // invoicesList is a script-scope `let`, so it is not reachable as a window
+    // property. Rebuild the same objects through the real normaliser instead.
+    const invObjs = window.rowsToObjects(DATA.data['Invoices']);
+    const byNum = (n) => invObjs.find(i => String(i.invoice_number) === n);
+
+    A.ok(window.isUnpaidInvoice(byNum('2025064')), 'Sent + no paid date + past due → unpaid');
+    A.ok(window.isOverdueInvoice(byNum('2025064')), '…and overdue');
+    A.ok(window.isUnpaidInvoice(byNum('2025065')), 'Sent + no paid date + future due → unpaid');
+    A.ok(!window.isOverdueInvoice(byNum('2025065')), '…but not overdue');
+
+    A.ok(!window.isUnpaidInvoice(byNum('2025080')), 'Pending is not a debt — not yet sent');
+    A.ok(!window.isUnpaidInvoice(byNum('2025081')), 'Pending Review is not a debt — committee gate');
+    A.ok(!window.isUnpaidInvoice(byNum('2025082')), 'Email Sent = No is not a debt');
+
+    A.ok(!window.isUnpaidInvoice(byNum('2025052')), 'Ignored excluded even though it looks overdue');
+    A.ok(!window.isOverdueInvoice(byNum('2025052')), 'Ignored never counts as overdue');
+
+    A.eq(window.invoiceStatusOf(byNum('2025064')), 'Live', 'blank Invoice Status reads as Live');
+    A.ok(!window.isUnpaidInvoice(byNum('2025001')), 'Paid Date set → excluded from unpaid');
+
+    // The Leslie Shroot case — the whole point of the issue.
+    const leslie = window.unpaidInvoices().filter(i => i.email === 'leslie@x.com');
+    A.eq(leslie.length, 2, 'a member with two outstanding invoices shows both');
+    const leslieMixed = invObjs.filter(i => i.email === 'leslie@x.com' && window.invoiceIsPaid(i));
+    A.eq(leslieMixed.length, 0, 'neither of Leslie\'s invoices is paid yet');
+
+    A.eq(window.daysOverdue(byNum('2025064')), 45, 'days overdue counted from the due date (01/08 → 15/09)');
+    A.eq(window.daysOverdue(byNum('2025065')), 0, 'not-yet-due invoice reports 0 days overdue');
+
+    // ── dashboard tile matches the view ─────────────────────────────────────
+    const dash = window.renderDashboard();
+    const tile = dash.match(/tile-count">(\d+)<\/div>\s*<div class="tile-label">Unpaid invoices/);
+    A.ok(tile, 'dashboard has an unpaid invoices tile');
+    A.eq(tile[1], '2', 'tile count matches unpaidInvoices()');
+    A.ok(/Unpaid invoices — 1 overdue/.test(dash), 'tile calls out the overdue count');
+    A.ok(/class="tile alert"/.test(dash), 'tile uses the alert class while something is overdue');
+
+    // ── the view itself ─────────────────────────────────────────────────────
+    window.showView('invoices');
+    const html = window.document.getElementById('main-content').innerHTML;
+    A.ok(html.includes('2025064') && html.includes('2025065'), 'default filter shows both unpaid invoices');
+    A.ok(!html.includes('2025001'), 'paid invoice hidden under the default filter');
+    A.ok(!html.includes('2025052'), 'Ignored invoice hidden unless explicitly selected');
+    A.ok(html.indexOf('2025064') < html.indexOf('2025065'), 'overdue sorts first');
+
+    window.filterInvoices('ignored');
+    const ignoredHtml = window.document.getElementById('main-content').innerHTML;
+    A.ok(ignoredHtml.includes('2025052'), 'Ignored filter reveals ignored invoices');
+    A.ok(!ignoredHtml.includes('2025064'), 'Ignored filter shows only ignored invoices');
+
+    window.filterInvoices('paid');
+    A.ok(window.document.getElementById('main-content').innerHTML.includes('2025001'), 'Paid filter shows the paid invoice');
+    window.filterInvoices('unpaid'); // restore
+  }
+
+  A.section('hub — invoice columns absent (pre-schema-change sheet)');
+  {
+    // Before the two columns are added the tile must stay hidden rather than
+    // reporting every sent invoice as unpaid.
+    const DATA = {
+      data: {
+        'Member List': [['First', 'Last', 'Email', 'Status'], ['A', 'B', 'a@x.com', 'Active']],
+        'Invoices': [
+          ['Invoice Number', 'Billing Name', 'Email', 'Amount Due', 'Due Date', 'Email Sent', 'PDF Status'],
+          ['2025001', 'A B', 'a@x.com', '340', '01/08/2026', 'Sent', 'Generated'],
+        ],
+        'Onboarding': [], 'Transactions': [], 'Errors': [],
+      },
+    };
+    const { window } = await signIn(serverFetch((b) => (b.action === 'getAll' ? DATA : {})));
+    A.ok(!window.invoiceColumnsPresent(), 'columns reported absent on a pre-change sheet');
+    A.ok(!/tile-label">Unpaid invoices/.test(window.renderDashboard()), 'no unpaid tile until the columns exist');
+  }
+
+  A.section('hub — Australian date parsing');
+  {
+    const { window } = await loadPage(PAGE);
+    // new Date('01/07/2026') would be 7 January in US order; this is 1 July.
+    const d = window.parseAuDate('01/07/2026');
+    A.eq(d.getMonth(), 6, 'dd/mm/yyyy parsed as July, not January');
+    A.eq(d.getDate(), 1, 'day-of-month read from the first field');
+    A.eq(window.parseAuDate('2026-07-01').getMonth(), 6, 'ISO dates still parse');
+    A.eq(window.parseAuDate(''), null, 'blank date → null');
+    A.eq(window.parseAuDate('not a date'), null, 'unparseable date → null');
   }
 
   process.exit(A.summary() ? 0 : 1);
