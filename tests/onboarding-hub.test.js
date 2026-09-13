@@ -393,5 +393,69 @@ async function signIn(fetchImpl) {
     A.eq(window.parseAuDate('not a date'), null, 'unparseable date → null');
   }
 
+
+  A.section('hub — Mark as Paid is invoice-scoped');
+  {
+    const INV_HEADERS = ['Invoice Number', 'Billing Name', 'Email', 'Amount Due', 'Due Date',
+                         'Email Sent', 'PDF Status', 'Paid Date', 'Invoice Status'];
+    const DATA = {
+      data: {
+        'Member List': [
+          ['First', 'Last', 'Email', 'Status', 'Invoice Paid Date'],
+          ['Leslie', 'Shroot', 'leslie@x.com', 'Invoiced', ''],
+          ['Solo',   'One',    'solo@x.com',   'Invoiced', ''],
+        ],
+        'Invoices': [
+          INV_HEADERS,
+          ['2025064', 'Leslie Shroot', 'leslie@x.com', '340', '01/08/2026', 'Sent', 'Generated', '', ''],
+          ['2025065', 'Leslie Shroot', 'leslie@x.com', '470', '01/10/2026', 'Sent', 'Generated', '', ''],
+          ['2025070', 'Solo One',      'solo@x.com',   '340', '01/08/2026', 'Sent', 'Generated', '', ''],
+        ],
+        'Onboarding': [], 'Transactions': [], 'Errors': [],
+      },
+    };
+
+    const posts = [];
+    const fetchImpl = async (url, init) => {
+      const body = JSON.parse(init.body);
+      if (body.action !== 'getAll') posts.push(body);
+      const payload = body.action === 'getAll' ? DATA : { ok: true };
+      return { ok: true, status: 200, json: async () => payload, text: async () => JSON.stringify(payload) };
+    };
+
+    const { window } = await signIn(fetchImpl);
+    window.prompt = () => '05/09/2026';
+
+    // One outstanding invoice → chosen automatically, no extra click.
+    await window.markPaidForMember('solo@x.com');
+    await waitTicks(6);
+    const paidPost = posts.find(p => p.action === 'markPaid');
+    A.ok(paidPost, 'markPaid was posted');
+    A.eq(paidPost.invoiceNumber, '2025070', 'single outstanding invoice is selected automatically');
+    A.eq(paidPost.date, '05/09/2026', 'the entered date is sent');
+    A.ok(!('memberEmail' in paidPost), 'no memberEmail — the call is invoice-scoped now');
+
+    // Two outstanding → must not guess; sends the treasurer to the list.
+    posts.length = 0;
+    await window.markPaidForMember('leslie@x.com');
+    await waitTicks(4);
+    A.eq(posts.filter(p => p.action === 'markPaid').length, 0, 'two outstanding invoices → nothing is posted');
+    // currentView is a script-scope `let`, so assert through the DOM instead.
+    A.ok(window.document.getElementById('nav-invoices').classList.contains('active'),
+         '…the treasurer is sent to the invoices view to choose');
+    A.ok(window.document.getElementById('main-content').innerHTML.includes('2025064'),
+         '…with both outstanding invoices listed');
+
+    // The row action posts the invoice it belongs to.
+    posts.length = 0;
+    await window.markPaid('2025065');
+    await waitTicks(6);
+    const rowPost = posts.find(p => p.action === 'markPaid');
+    A.eq(rowPost.invoiceNumber, '2025065', 'row action posts its own invoice number');
+
+    const invHtml = window.renderInvoices();
+    A.ok(invHtml.includes("markPaid('2025064')"), 'each unpaid row carries a Mark as Paid action for its own invoice');
+  }
+
   process.exit(A.summary() ? 0 : 1);
 })();
