@@ -1,0 +1,112 @@
+@import "extensions/tabbed.css";
+
+/* ── Design System Tokens ─────────────────────────────────────────────────────
+   Single source of truth for palette, type scale, and spacing.
+   Referenced by both the MkDocs Material override below and the standalone
+   join/onboarding pages (which duplicate these via their own :root blocks
+   until a shared CSS file is wired in).
+   ──────────────────────────────────────────────────────────────────────────── */
+:root {
+  /* Brand palette */
+  --goto-primary:       #004165;
+  --goto-primary-light: #006094;
+  --goto-accent:        #0092d0;
+
+  /* Surface colours */
+  --goto-bg:            #f5f7fa;
+  --goto-card:          #ffffff;
+
+  /* Text */
+  --goto-text:          #1a1a2e;
+  --goto-muted:         #6b7280;
+
+  /* UI */
+  --goto-border:        #d1d5db;
+  --goto-error:         #dc2626;
+  --goto-success:       #16a34a;
+  --goto-warning:       #d97706;
+
+  /* Shape */
+  --goto-radius:        8px;
+  --goto-shadow:        0 2px 16px rgba(0, 65, 101, 0.10);
+}
+
+/* ── MkDocs Material overrides ────────────────────────────────────────────────
+   Map the design tokens onto Material's CSS variable layer.
+   ──────────────────────────────────────────────────────────────────────────── */
+:root,
+[data-md-color-scheme="default"] {
+  /* Primary / accent */
+  --md-primary-fg-color:        var(--goto-primary);
+  --md-primary-fg-color--light: var(--goto-primary-light);
+  --md-primary-fg-color--dark:  var(--goto-primary);
+  --md-accent-fg-color:         var(--goto-accent);
+
+  /* Typography */
+  --md-text-font:               "Montserrat";
+  --md-code-font:               "Roboto Mono";
+
+  /* Page background — match the hub's off-white surface */
+  --md-default-bg-color:        var(--goto-bg);
+  --md-default-fg-color:        var(--goto-text);
+  --md-default-fg-color--light: var(--goto-muted);
+
+  /* Header */
+  --md-header-bg-color:         var(--goto-primary);
+}
+
+/* ── Header typography ────────────────────────────────────────────────────────
+   Material defaults to "normal" weight in the nav; bump to 600 to match
+   the hub's bolder header style.
+   ──────────────────────────────────────────────────────────────────────────── */
+.md-header__title,
+.md-tabs__link {
+  font-weight: 600;
+}
+
+/* ── Nav tabs ─────────────────────────────────────────────────────────────────
+   Accent underline on the active tab to match the hub's tab style.
+   ──────────────────────────────────────────────────────────────────────────── */
+.md-tabs__link--active,
+.md-tabs__link:hover {
+  border-bottom: 2px solid var(--goto-accent);
+}
+
+/* ── Content surface ──────────────────────────────────────────────────────────
+   Give the content area the same card treatment as the hub.
+   ──────────────────────────────────────────────────────────────────────────── */
+.md-content {
+  background: var(--goto-card);
+  border-radius: var(--goto-radius);
+  box-shadow: var(--goto-shadow);
+}
+
+/* ── Links ────────────────────────────────────────────────────────────────────
+   Use the accent colour for body links.
+   ──────────────────────────────────────────────────────────────────────────── */
+.md-content a {
+  color: var(--goto-accent);
+}
+.md-content a:hover {
+  color: var(--goto-primary-light);
+}
+
+/* ── Headings ─────────────────────────────────────────────────────────────────
+   h1/h2/h3 in brand primary.
+   ──────────────────────────────────────────────────────────────────────────── */
+.md-content h1,
+.md-content h2 {
+  color: var(--goto-primary);
+  font-weight: 700;
+}
+.md-content h3 {
+  color: var(--goto-text);
+  font-weight: 600;
+}
+
+/* ── Footer ───────────────────────────────────────────────────────────────────
+   Match header background.
+   ──────────────────────────────────────────────────────────────────────────── */
+.md-footer {
+  background-color: var(--goto-primary);
+}
