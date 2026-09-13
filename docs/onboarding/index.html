@@ -436,6 +436,10 @@
       <span>Badges</span>
       <span class="badge" id="badge-badges" style="display:none">0</span>
     </a>
+    <a class="nav-link" onclick="showView('invoices')" id="nav-invoices">
+      <span>Invoices</span>
+      <span class="badge" id="badge-invoices" style="display:none">0</span>
+    </a>
     <a class="nav-link" onclick="showView('dietary')" id="nav-dietary">
       <span>Dietary</span>
     </a>
@@ -624,6 +628,7 @@ function showView(view, data) {
     case 'members':     main.innerHTML = renderMembers();     break;
     case 'member-detail': main.innerHTML = renderMemberDetail(data); break;
     case 'badges':      main.innerHTML = renderBadges();      break;
+    case 'invoices':    main.innerHTML = renderInvoices();    break;
     case 'dietary':     main.innerHTML = renderDietary();     break;
     case 'education':   main.innerHTML = renderEducation();   break;
     case 'errors':      main.innerHTML = renderErrors();      break;
@@ -654,6 +659,8 @@ function renderDashboard() {
     return !isNaN(d.getTime()) && d >= today && d <= sixWeeks;
   });
   const errorsUnread = errorsList.filter(e => !e.reviewed_by);
+  const unpaid       = unpaidInvoices();
+  const overdue      = overdueInvoices();
 
   return `
     <div class="card">
@@ -667,6 +674,12 @@ function renderDashboard() {
           <div class="tile-count">${pendingReview.length}</div>
           <div class="tile-label">Invoices awaiting category confirmation</div>
         </div>
+        ${invoiceColumnsPresent() ? `
+        <div class="tile ${overdue.length ? 'alert' : unpaid.length ? 'warn' : ''}"
+             onclick="filterInvoices(${overdue.length ? "'overdue'" : "'unpaid'"})">
+          <div class="tile-count">${unpaid.length}</div>
+          <div class="tile-label">Unpaid invoices${overdue.length ? ` — ${overdue.length} overdue` : ''}</div>
+        </div>` : ''}
         <div class="tile ${paidNoTI.length ? 'warn' : ''}" onclick="showView('members'); filterMembers('Active')">
           <div class="tile-count">${paidNoTI.length}</div>
           <div class="tile-label">Paid — TI not yet submitted</div>
@@ -1242,6 +1255,157 @@ function renderMemberManagement(m, invoice, onboarding, isLapsed) {
 
     <div class="section-title">Onboarding Checklist</div>
     ${checklistHtml}`;
+}
+
+// ══════════════════════════════════════════════════════════════════════════════
+// INVOICES VIEW
+// ══════════════════════════════════════════════════════════════════════════════
+
+// Which invoices the view is showing. Unpaid is the default because the point
+// of this view is "who owes money".
+let _invoiceFilter = 'unpaid';
+function filterInvoices(key) { _invoiceFilter = key; showView('invoices'); }
+
+/**
+ * True once the Invoices tab carries the Paid Date / Invoice Status columns.
+ * Until then the tile and view are hidden rather than showing a misleading
+ * "everything is unpaid" count. Mirrors badgeColumnsPresent().
+ */
+function invoiceColumnsPresent() {
+  return invoicesList.some(i =>
+    Object.prototype.hasOwnProperty.call(i, 'paid_date') &&
+    Object.prototype.hasOwnProperty.call(i, 'invoice_status'));
+}
+
+/** Blank Invoice Status reads as Live, so no backfill is needed. */
+function invoiceStatusOf(i) {
+  return (i.invoice_status || '').toString().trim() || 'Live';
+}
+function invoiceIsIgnored(i) { return norm(invoiceStatusOf(i)) === 'ignored'; }
+function invoiceIsPaid(i)    { return !!(i.paid_date && String(i.paid_date).trim()); }
+
+/**
+ * Only invoices that actually reached the member are debts. 'No', 'Pending' and
+ * 'Pending Review' have not been sent — 'Pending Review' in particular is the
+ * committee-approval gate, so those are deliberately unsent.
+ */
+function invoiceIsSent(i) { return norm(i.email_sent) === 'sent'; }
+
+function isUnpaidInvoice(i) {
+  return !invoiceIsIgnored(i) && invoiceIsSent(i) && !invoiceIsPaid(i);
+}
+
+/**
+ * dd/mm/yyyy is what the committee types; Apps Script serialises real Date
+ * cells to ISO. `new Date('01/07/2026')` would read the first as US mm/dd, so
+ * the slash form is parsed explicitly.
+ */
+function parseAuDate(v) {
+  if (!v) return null;
+  const str = String(v).trim();
+  const dmy = str.match(/^(\d{1,2})\/(\d{1,2})\/(\d{4})$/);
+  if (dmy) return new Date(+dmy[3], +dmy[2] - 1, +dmy[1]);
+  const d = new Date(str);
+  return isNaN(d.getTime()) ? null : d;
+}
+
+/** Midnight today, so an invoice due today is not yet overdue. */
+function startOfToday() {
+  const n = new Date();
+  return new Date(n.getFullYear(), n.getMonth(), n.getDate());
+}
+
+function isOverdueInvoice(i) {
+  if (!isUnpaidInvoice(i)) return false;
+  const due = parseAuDate(i.due_date);
+  return !!due && due < startOfToday();
+}
+
+function daysOverdue(i) {
+  const due = parseAuDate(i.due_date);
+  if (!due) return 0;
+  return Math.max(0, Math.round((startOfToday() - due) / 864e5));
+}
+
+function unpaidInvoices()  { return invoicesList.filter(isUnpaidInvoice); }
+function overdueInvoices() { return invoicesList.filter(isOverdueInvoice); }
+
+function renderInvoices() {
+  const filters = [
+    { key: 'unpaid',  label: 'Unpaid',  match: isUnpaidInvoice },
+    { key: 'overdue', label: 'Overdue', match: isOverdueInvoice },
+    { key: 'paid',    label: 'Paid',    match: i => !invoiceIsIgnored(i) && invoiceIsPaid(i) },
+    { key: 'all',     label: 'All',     match: i => !invoiceIsIgnored(i) },
+    // Ignored is never folded into the others — it is only ever shown on request.
+    { key: 'ignored', label: 'Ignored', match: invoiceIsIgnored },
+  ];
+  const active = filters.find(f => f.key === _invoiceFilter) || filters[0];
+  const rows   = invoicesList.filter(active.match).slice().sort((a, b) => {
+    const ao = daysOverdue(a), bo = daysOverdue(b);
+    if (ao !== bo) return bo - ao;                      // most overdue first
+    const ad = parseAuDate(a.due_date), bd = parseAuDate(b.due_date);
+    if (ad && bd) return ad - bd;
+    return String(a.invoice_number || '').localeCompare(String(b.invoice_number || ''));
+  });
+
+  const counts = {};
+  filters.forEach(f => { counts[f.key] = invoicesList.filter(f.match).length; });
+
+  const rowsHtml = rows.map(i => {
+    const overdue = isOverdueInvoice(i);
+    const days    = overdue ? daysOverdue(i) : 0;
+    return `<tr>
+      <td>${esc(String(i.invoice_number || ''))}</td>
+      <td>${esc(i.billing_name || '')}</td>
+      <td><a href="mailto:${esc(i.email)}">${esc(i.email || '')}</a></td>
+      <td style="text-align:right">${esc(fmtAmount(i.amount_due))}</td>
+      <td>${i.due_date ? fmtDate(i.due_date) : '—'}</td>
+      <td style="text-align:right">${overdue
+        ? `<span style="color:var(--error);font-weight:600">${days}</span>` : '—'}</td>
+      <td>${invoicePill(i)}</td>
+      <td style="white-space:nowrap">
+        ${i.email ? `<button class="btn btn-ghost btn-sm" onclick="openMember('${esc(i.email)}')">Open member</button>` : ''}
+        ${i.invoice_link
+          ? `<a class="btn btn-ghost btn-sm" href="${esc(i.invoice_link)}" target="_blank" rel="noopener">View PDF</a>`
+          : ''}
+      </td>
+    </tr>`;
+  }).join('');
+
+  return `
+    <div class="card">
+      <h2>Invoices <span style="font-weight:400; color:var(--muted);">(${rows.length})</span></h2>
+      <div class="filter-bar">
+        ${filters.map(f => `<button
+          class="btn btn-sm ${f.key === active.key ? 'btn-primary' : 'btn-ghost'}"
+          onclick="filterInvoices('${f.key}')">${f.label} (${counts[f.key]})</button>`).join('')}
+      </div>
+      <div style="overflow-x:auto">
+        <table>
+          <thead><tr>
+            <th>Invoice #</th><th>Billing Name</th><th>Email</th>
+            <th style="text-align:right">Amount Due</th><th>Due Date</th>
+            <th style="text-align:right">Days Overdue</th><th>Status</th><th>Actions</th>
+          </tr></thead>
+          <tbody>${rowsHtml || `<tr><td colspan="8" style="color:var(--muted);text-align:center;padding:24px">No ${esc(active.label.toLowerCase())} invoices.</td></tr>`}</tbody>
+        </table>
+      </div>
+    </div>`;
+}
+
+/** Billing Name is deliberately the legal name here — it is what is on the invoice. */
+function invoicePill(i) {
+  if (invoiceIsIgnored(i))   return '<span class="pill">Ignored</span>';
+  if (invoiceIsPaid(i))      return `<span class="pill pill-active">Paid ${esc(fmtDate(i.paid_date))}</span>`;
+  if (isOverdueInvoice(i))   return '<span class="pill pill-rejected">Overdue</span>';
+  if (isUnpaidInvoice(i))    return '<span class="pill pill-invoiced">Unpaid</span>';
+  return `<span class="pill">${esc(i.email_sent || 'Not sent')}</span>`;
+}
+
+function fmtAmount(v) {
+  if (v === '' || v === null || v === undefined) return '—';
+  const n = Number(String(v).replace(/[^0-9.\-]/g, ''));
+  return isNaN(n) ? String(v) : '$' + n.toFixed(2);
 }
 
 // ══════════════════════════════════════════════════════════════════════════════
@@ -1906,12 +2070,16 @@ function updateBadges() {
   const prospects   = memberList.filter(m => norm(m.status) === 'prospect').length;
   const errorsUnread = errorsList.filter(e => !e.reviewed_by).length;
   const awaitingBadges = badgeColumnsPresent() ? badgesAwaitingApproval().length : 0;
+  // Overdue rather than unpaid: the nav badge should mean "needs chasing".
+  const overdueCount   = invoiceColumnsPresent() ? overdueInvoices().length : 0;
   const bP = document.getElementById('badge-prospects');
   const bE = document.getElementById('badge-errors');
   const bB = document.getElementById('badge-badges');
+  const bI = document.getElementById('badge-invoices');
   if (bP) { bP.textContent = prospects;    bP.style.display = prospects   ? '' : 'none'; }
   if (bE) { bE.textContent = errorsUnread; bE.style.display = errorsUnread ? '' : 'none'; }
   if (bB) { bB.textContent = awaitingBadges; bB.style.display = awaitingBadges ? '' : 'none'; }
+  if (bI) { bI.textContent = overdueCount;  bI.style.display = overdueCount  ? '' : 'none'; }
 }
 </script>
 
