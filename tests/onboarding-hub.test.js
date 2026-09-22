@@ -457,5 +457,99 @@ async function signIn(fetchImpl) {
     A.ok(invHtml.includes("markPaid('2025064')"), 'each unpaid row carries a Mark as Paid action for its own invoice');
   }
 
+  // ───────────────────────────────────────────────────────────────────────────
+  A.section('onboarding checklist by item (issue #32)');
+  {
+    const DATA = {
+      data: {
+        'Member List': [
+          ['First', 'Last', 'Email', 'Status', 'Invoice Paid Date', 'Onboarding Complete'],
+          // mid-onboarding: paid, active, not complete
+          ['Ann',  'New',   'ann@x.com',  'Active',   '01/08/2026', ''],
+          ['Bob',  'New',   'bob@x.com',  'Active',   '01/08/2026', ''],
+          // complete — out of the cohort
+          ['Cara', 'Done',  'cara@x.com', 'Active',   '01/08/2026', 'TRUE'],
+          // unpaid — checklist has not unlocked
+          ['Dan',  'Owing', 'dan@x.com',  'Active',   '',           ''],
+          // not active
+          ['Eve',  'Gone',  'eve@x.com',  'Lapsed',   '01/08/2026', ''],
+        ],
+        'Onboarding': [
+          ['Member Email', 'Member Name', 'Calendar Invited', 'WhatsApp Added'],
+          // Ann already has her calendar invite; Bob does not.
+          ['ann@x.com', 'Ann New', '05/08/2026', ''],
+          ['bob@x.com', 'Bob New', '',           '06/08/2026'],
+        ],
+        'Invoices': [], 'Transactions': [], 'Errors': [],
+      },
+    };
+
+    const posts = [];
+    const fetchImpl = async (url, init) => {
+      const body = JSON.parse(init.body);
+      if (body.action !== 'getAll') posts.push(body);
+      const payload = body.action === 'getAll' ? DATA : { ok: true };
+      return { ok: true, status: 200, json: async () => payload, text: async () => JSON.stringify(payload) };
+    };
+
+    const { window } = await signIn(fetchImpl);
+
+    const CAL = { key: 'calendar_invited', label: 'Google Calendar invited', col: 'Calendar Invited' };
+    const WA  = { key: 'whatsapp_added',   label: 'Added to WhatsApp',       col: 'WhatsApp Added' };
+
+    // memberList is a script-scope `let`, so rebuild the objects through the real
+    // normaliser rather than reaching for it — same approach as the invoices tests.
+    const members = window.rowsToObjects(DATA.data['Member List']);
+    const memberByEmail = (e) => members.find(m => m.email === e);
+
+    // ── who counts as mid-onboarding ────────────────────────────────────────
+    const cohort = window.checklistCohort().map(m => m.email).sort();
+    A.eq(cohort, ['ann@x.com', 'bob@x.com'], 'cohort = active, invoice paid, onboarding not complete');
+
+    // ── per-item outstanding lists ──────────────────────────────────────────
+    A.eq(window.membersOutstandingFor(CAL).map(m => m.email), ['bob@x.com'],
+         'calendar invite outstanding for Bob only — Ann is already stamped');
+    A.eq(window.membersOutstandingFor(WA).map(m => m.email), ['ann@x.com'],
+         'WhatsApp outstanding for Ann only');
+
+    // A member with no Onboarding row at all is outstanding, not invisible.
+    A.ok(window.checklistStepDone(memberByEmail('ann@x.com'), CAL),
+         'a stamped step reads as done');
+    A.ok(!window.checklistStepDone(memberByEmail('bob@x.com'), CAL),
+         'a blank step reads as not done');
+
+    // ── the view ────────────────────────────────────────────────────────────
+    window.filterChecklist('calendar_invited');
+    const html = window.document.getElementById('main-content').innerHTML;
+    A.ok(window.document.getElementById('nav-checklist').classList.contains('active'),
+         'the checklist view is reachable from the nav');
+    A.ok(html.includes('bob@x.com'), 'the outstanding member is listed');
+    A.ok(!html.includes('ann@x.com'), 'the member who has it done is not');
+    A.ok(/Google Calendar invited\s*—\s*1 outstanding/.test(html), 'the heading names the step and the count');
+    A.ok(html.includes('Copy 1 email'), 'the addresses can be copied in one go');
+
+    // Counts on every step button, so you can see where the work is.
+    A.ok(/Added to WhatsApp \(1\)/.test(html), 'each step button carries its outstanding count');
+
+    // ── ticking one off ─────────────────────────────────────────────────────
+    posts.length = 0;
+    await window.markChecklistStep('bob@x.com', 'calendar_invited', 'Calendar Invited', 'checklist');
+    await waitTicks(6);
+    const post = posts.find(p => p.action === 'markChecklistStep');
+    A.ok(post, 'markChecklistStep was posted');
+    A.eq(post.memberEmail, 'bob@x.com', '…for the row that was clicked');
+    A.eq(post.colName, 'Calendar Invited', '…naming the Onboarding column the backend stamps');
+
+    // The whole point of working down a list: you stay on it.
+    A.ok(window.document.getElementById('nav-checklist').classList.contains('active'),
+         'ticking from the by-item view keeps you in the by-item view');
+
+    // ── the member card still drives off the same list ──────────────────────
+    const card = window.renderMemberManagement(
+      memberByEmail('bob@x.com'), null, window.onboardingFor('bob@x.com'), false);
+    A.ok(card.includes('Google Calendar invited'), 'the per-member card renders the shared step list');
+    A.ok(card.includes('Added to WhatsApp'), '…all of it');
+  }
+
   process.exit(A.summary() ? 0 : 1);
 })();

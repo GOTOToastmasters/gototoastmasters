@@ -440,6 +440,9 @@
       <span>Invoices</span>
       <span class="badge" id="badge-invoices" style="display:none">0</span>
     </a>
+    <a class="nav-link" onclick="showView('checklist')" id="nav-checklist">
+      <span>Checklist</span>
+    </a>
     <a class="nav-link" onclick="showView('dietary')" id="nav-dietary">
       <span>Dietary</span>
     </a>
@@ -629,6 +632,7 @@ function showView(view, data) {
     case 'member-detail': main.innerHTML = renderMemberDetail(data); break;
     case 'badges':      main.innerHTML = renderBadges();      break;
     case 'invoices':    main.innerHTML = renderInvoices();    break;
+    case 'checklist':   main.innerHTML = renderChecklist();   break;
     case 'dietary':     main.innerHTML = renderDietary();     break;
     case 'education':   main.innerHTML = renderEducation();   break;
     case 'errors':      main.innerHTML = renderErrors();      break;
@@ -1106,23 +1110,162 @@ function renderApplicationReview(m, invoice, onboarding, googleSearch, name) {
 // ─────────────────────────────────────────────────────────────────────────────
 // Member Management section
 // ─────────────────────────────────────────────────────────────────────────────
+// ══════════════════════════════════════════════════════════════════════════════
+// ONBOARDING CHECKLIST — shared definition, and the by-item view
+// ══════════════════════════════════════════════════════════════════════════════
+
+/**
+ * The checklist, in the order it is worked through. Single source of truth for
+ * both the per-member card and the by-item view — they drifting apart is how a
+ * step ends up tickable in one place and invisible in the other.
+ *
+ * `col` is the Onboarding tab header the backend stamps; `key` is its normalised
+ * form, as rowsToObjects produces.
+ */
+const CHECKLIST_STEPS = [
+  { key: 'club_central_registered',    label: 'Club Central registered',   col: 'Club Central Registered' },
+  { key: 'club_central_paid',          label: 'Club Central paid',         col: 'Club Central Paid' },
+  { key: 'whatsapp_added',             label: 'Added to WhatsApp',         col: 'WhatsApp Added' },
+  { key: 'calendar_invited',           label: 'Google Calendar invited',   col: 'Calendar Invited' },
+  { key: 'easy_speak_linked',          label: 'Easy-Speak linked',         col: 'Easy-Speak Linked' },
+  { key: 'badge_made',                 label: 'Badge ordered',             col: 'Badge Made' },
+  { key: 'invoice_sent',               label: 'Invoice sent',              col: 'Invoice Sent' },
+  { key: 'member_goals_discussion',    label: 'Member goals discussion',   col: 'Member Goals Discussion' },
+  { key: 'linkedin_follow_connection', label: 'LinkedIn follow/connection', col: 'LinkedIn Follow/Connection' },
+  { key: 'onboarding_complete',        label: 'Onboarding complete',       col: 'Onboarding Complete' },
+];
+
+let _checklistStep = null;
+
+/** The Onboarding tab row for a member, or {} when they have none yet. */
+function onboardingFor(email) {
+  const e = norm(email);
+  return onboardingList.find(o => norm(o.member_email) === e) || {};
+}
+
+/**
+ * Who is actually being onboarded: paid up, active, and not yet complete.
+ * Deliberately the same rule the dashboard's "incomplete onboarding" tile uses —
+ * two different answers to "who is mid-onboarding?" would be worse than none.
+ */
+function checklistCohort() {
+  return memberList.filter(m =>
+    m.invoice_paid_date && norm(m.onboarding_complete) !== 'true' &&
+    norm(m.status) === 'active');
+}
+
+/** Truthy (usually the stamped date) when this member has this step done. */
+function checklistStepDone(m, step) {
+  const onb = onboardingFor(m.email);
+  return onb[step.key] || (step.key === 'onboarding_complete' && m.onboarding_complete);
+}
+
+function membersOutstandingFor(step) {
+  return checklistCohort().filter(m => !checklistStepDone(m, step));
+}
+
+function filterChecklist(key) {
+  _checklistStep = key;
+  showView('checklist');
+}
+
+/**
+ * The by-item view (issue #32): pick a step, see everyone still waiting on it,
+ * with their email addresses to hand, and tick them off as they are done.
+ *
+ * The per-member card answers "what does Ann still need?". This answers "who
+ * still needs a calendar invite?", which is how the work is actually batched —
+ * you add six people to the calendar in one sitting, not one member at a time.
+ */
+function renderChecklist() {
+  const cohort = checklistCohort();
+  const steps  = CHECKLIST_STEPS.map(s =>
+    Object.assign({}, s, { outstanding: cohort.filter(m => !checklistStepDone(m, s)).length }));
+
+  // Land on something useful rather than an empty pane: the first step with work
+  // outstanding, unless the user has picked one.
+  const active = steps.find(s => s.key === _checklistStep)
+              || steps.find(s => s.outstanding > 0)
+              || steps[0];
+
+  if (!cohort.length) {
+    return `
+      <div class="card">
+        <h2>Checklist by item</h2>
+        <p style="font-size:.85rem;color:var(--muted)">
+          Nobody is mid-onboarding right now — this lists active members whose invoice is
+          paid and whose onboarding is not yet complete.
+        </p>
+      </div>`;
+  }
+
+  const waiting = membersOutstandingFor(active);
+  const emails  = waiting.map(m => m.email).filter(Boolean);
+
+  const rowsHtml = waiting.map(m => {
+    // The badge step is a four-stage workflow with its own state, not something
+    // anyone ticks by hand. Send them to the member card rather than offering a
+    // tick that would contradict the Badge section there.
+    const isBadgeWorkflow = active.key === 'badge_made' && badgeColumnsPresent();
+    return `<tr>
+      <td>${esc(displayName(m))}</td>
+      <td><a href="mailto:${esc(m.email)}">${esc(m.email || '')}</a></td>
+      <td>${m.invoice_paid_date ? fmtDate(m.invoice_paid_date) : '—'}</td>
+      <td style="white-space:nowrap">
+        ${isBadgeWorkflow
+          ? `<button class="btn btn-ghost btn-sm" onclick="openMember('${esc(m.email)}')">Open member</button>`
+          : `<button class="btn btn-primary btn-sm"
+               onclick="markChecklistStep('${esc(m.email)}','${esc(active.key)}','${esc(active.col)}','checklist')">
+               Mark done</button>
+             <button class="btn btn-ghost btn-sm" onclick="openMember('${esc(m.email)}')">Open member</button>`}
+      </td>
+    </tr>`;
+  }).join('');
+
+  const emailsHtml = emails.length
+    ? `<div class="filter-bar" style="margin-top:12px">
+         <button class="btn btn-ghost btn-sm" onclick="copyText('${esc(emails.join(', '))}')">
+           Copy ${emails.length} email${emails.length === 1 ? '' : 's'}</button>
+       </div>`
+    : '';
+
+  const bodyHtml = waiting.length
+    ? `<div style="overflow-x:auto">
+         <table>
+           <thead><tr>
+             <th>Member</th><th>Email</th><th>Paid</th><th></th>
+           </tr></thead>
+           <tbody>${rowsHtml}</tbody>
+         </table>
+       </div>
+       ${emailsHtml}`
+    : `<p style="font-size:.85rem;color:var(--muted)">
+         Everyone mid-onboarding has "${esc(active.label)}" done.
+       </p>`;
+
+  return `
+    <div class="card">
+      <h2>Checklist by item
+        <span style="font-weight:400; color:var(--muted);">(${cohort.length} mid-onboarding)</span>
+      </h2>
+      <div class="filter-bar">
+        ${steps.map(s => `<button
+          class="btn btn-sm ${s.key === active.key ? 'btn-primary' : 'btn-ghost'}"
+          onclick="filterChecklist('${s.key}')">${esc(s.label)} (${s.outstanding})</button>`).join('')}
+      </div>
+      <h3 style="margin-top:16px;font-size:.95rem">
+        ${esc(active.label)} — ${waiting.length} outstanding
+      </h3>
+      ${bodyHtml}
+    </div>`;
+}
+
 function renderMemberManagement(m, invoice, onboarding, isLapsed) {
   const name        = displayName(m);
   const hasPaidDate = !!m.invoice_paid_date;
   const isActive    = norm(m.status) === 'active';
 
-  const checklistSteps = [
-    { key: 'club_central_registered',    label: 'Club Central registered',   col: 'Club Central Registered' },
-    { key: 'club_central_paid',          label: 'Club Central paid',         col: 'Club Central Paid' },
-    { key: 'whatsapp_added',             label: 'Added to WhatsApp',         col: 'WhatsApp Added' },
-    { key: 'calendar_invited',           label: 'Google Calendar invited',   col: 'Calendar Invited' },
-    { key: 'easy_speak_linked',          label: 'Easy-Speak linked',         col: 'Easy-Speak Linked' },
-    { key: 'badge_made',                 label: 'Badge ordered',             col: 'Badge Made' },
-    { key: 'invoice_sent',               label: 'Invoice sent',              col: 'Invoice Sent' },
-    { key: 'member_goals_discussion',    label: 'Member goals discussion',   col: 'Member Goals Discussion' },
-    { key: 'linkedin_follow_connection', label: 'LinkedIn follow/connection', col: 'LinkedIn Follow/Connection' },
-    { key: 'onboarding_complete',        label: 'Onboarding complete',       col: 'Onboarding Complete' },
-  ];
+  const checklistSteps = CHECKLIST_STEPS;
 
   // Badge review. Hidden entirely until Member List carries the badge columns —
   // see badgeColumnsPresent().
@@ -1690,13 +1833,15 @@ async function markTISubmitted(email) {
   }
 }
 
-async function markChecklistStep(email, key, colName) {
+async function markChecklistStep(email, key, colName, returnTo) {
   showLoading('Updating…');
   try {
     const result = await hubPost({ action: 'markChecklistStep', memberEmail: email, key, colName });
     if (result.error) throw new Error(result.error);
     await refreshData();
-    openMember(email);
+    // Ticking from the by-item view must not fling the user into a member card —
+    // they are working down a list and expect to keep their place.
+    if (returnTo === 'checklist') showView('checklist'); else openMember(email);
   } catch (err) {
     hideLoading();
     showError('Failed: ' + err.message);
