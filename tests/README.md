@@ -1,8 +1,19 @@
-# Front-end tests
+# Tests
 
-jsdom suites that load the **real** site pages (`docs/join/index.html`,
+Two kinds, both run by `node run.js`, both offline.
+
+**jsdom suites** load the **real** site pages (`docs/join/index.html`,
 `docs/onboarding/index.html`), run their inline `<script>`, and assert the
 client logic — with `window.fetch` mocked, so no browser and no network.
+
+**`publish-commit.test.js`** is not jsdom. It covers `commitToGitHub_` in
+`script-publish/publish.js`, which is Apps Script rather than browser JS, by
+extracting the real functions from that file and driving them against a mocked
+`UrlFetchApp`. Extracting rather than copying means there is no second version to
+drift. It pins the regression that stopped the Events page publishing after
+2026-09-21: a failed Contents *read* was treated as "the file does not exist",
+so the *write* went out without a `sha` and GitHub answered
+`422 "sha" wasn't supplied` — an error naming the wrong request.
 
 ## Run
 
