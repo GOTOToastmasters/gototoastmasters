@@ -613,6 +613,90 @@ function tableToMd_(table) {
  * @param {string} message   Commit message.
  * @returns {string|null}    HTML URL of the commit, or null.
  */
+/** Reads that might fail for a transient reason get this many extra attempts. */
+var GITHUB_READ_RETRIES = 2;
+
+/**
+ * Reads a file's current state from the Contents API.
+ *
+ * Returns {found:true, sha, content} when it exists, {found:false} on a genuine 404,
+ * and THROWS on anything else.
+ *
+ * That three-way split is the whole point. The previous version treated every non-200
+ * as "the file is not there" and went on to PUT without a sha. GitHub rejects a create
+ * over an existing file with `422 "sha" wasn't supplied` — so a failed *read* surfaced
+ * as a confusing error about the *write*, naming neither the real status nor the request
+ * that actually failed. That is what broke the Events page: the 422 was a symptom one
+ * request downstream of the fault.
+ *
+ * An unknown read result must never be read as "absent".
+ */
+function githubReadFile_(apiUrl, branch, headers) {
+  var lastCode = null, lastBody = '';
+
+  for (var attempt = 0; attempt <= GITHUB_READ_RETRIES; attempt++) {
+    if (attempt > 0) Utilities.sleep(1000 * attempt);  // 1s, then 2s
+
+    var resp = UrlFetchApp.fetch(apiUrl + '?ref=' + encodeURIComponent(branch), {
+      method:             'get',
+      headers:            headers,
+      muteHttpExceptions: true,
+      // Not followed on purpose. A moved repo answers 3xx, and silently following it
+      // would let GITHUB_OWNER/GITHUB_REPO stay wrong forever while reads appear to work.
+      followRedirects:    false,
+    });
+    var code = resp.getResponseCode();
+
+    if (code === 200) {
+      var obj = JSON.parse(resp.getContentText());
+      if (!obj || !obj.sha) {
+        throw new Error('GitHub returned 200 for ' + apiUrl + ' but no sha. ' +
+                        'If that path is a directory rather than a file, the caller is wrong.');
+      }
+      return { found: true, sha: obj.sha, content: obj.content || null };
+    }
+
+    if (code === 404) return { found: false };
+
+    if (code >= 300 && code < 400) {
+      throw new Error(
+        'GitHub redirected (' + code + ') reading ' + apiUrl + '. GITHUB_OWNER / GITHUB_REPO ' +
+        'most likely still name the pre-transfer path — GitHub redirects those at the API ' +
+        'level, which is exactly what hides the misconfiguration. Point them at the current ' +
+        'owner and repo.');
+    }
+
+    lastCode = code;
+    lastBody = resp.getContentText().substring(0, 200);
+
+    // Retry only what might pass next time: server errors, rate limiting, and the 403
+    // GitHub uses for secondary limits. Other 4xx are settled answers.
+    if (!(code >= 500 || code === 429 || code === 403)) break;
+    console.log('[githubReadFile_] ' + code + ' reading ' + apiUrl + ' — retrying.');
+  }
+
+  throw new Error('Could not read ' + apiUrl + ' (HTTP ' + lastCode + '): ' + lastBody +
+                  ' — refusing to guess whether the file exists.');
+}
+
+/** PUTs content, with `sha` when updating and without when creating. */
+function githubWriteFile_(apiUrl, headers, repoPath, content, message, branch, sha) {
+  var payload = {
+    message: message,
+    content: Utilities.base64Encode(content, Utilities.Charset.UTF_8),
+    branch:  branch,
+  };
+  if (sha) payload.sha = sha;
+
+  return UrlFetchApp.fetch(apiUrl, {
+    method:             'put',
+    headers:            Object.assign({}, headers, { 'Content-Type': 'application/json' }),
+    payload:            JSON.stringify(payload),
+    muteHttpExceptions: true,
+    followRedirects:    false,
+  });
+}
+
 function commitToGitHub_(repoPath, content, message) {
   var props  = PropertiesService.getScriptProperties();
   var token = getInstallationToken_();
@@ -636,56 +720,47 @@ function commitToGitHub_(repoPath, content, message) {
     'X-GitHub-Api-Version': '2022-11-28',
   };
 
-  // GET the current file to retrieve its SHA (required for updates)
-  var currentSha = null;
-  var getResp = UrlFetchApp.fetch(apiUrl + '?ref=' + branch, {
-    method:            'get',
-    headers:           headers,
-    muteHttpExceptions: true,
-  });
-  if (getResp.getResponseCode() === 200) {
-    var getObj = JSON.parse(getResp.getContentText());
-    currentSha = getObj.sha;
+  var existing = githubReadFile_(apiUrl, branch, headers);
 
-    // Skip the PUT entirely if the new content is byte-identical to what's
-    // already on GitHub. GitHub's Contents API returns 200 with the EXISTING
-    // commit for an identical PUT (no new commit), which used to make callers
-    // think a change happened and fire a false "page auto-published" email.
-    if (getObj.content) {
-      var existing = Utilities.newBlob(
-        Utilities.base64Decode(getObj.content.replace(/\n/g, ''), Utilities.Charset.UTF_8)
-      ).getDataAsString('UTF-8');
-      if (existing === content) {
-        console.log('[commitToGitHub_] ' + repoPath + ' unchanged — skipping commit.');
-        return null;
-      }
+  // Skip the PUT entirely if the new content is byte-identical to what is already on
+  // GitHub. The Contents API answers an identical PUT with 200 and the EXISTING commit
+  // (no new commit), which used to make callers think something changed and fire a false
+  // "page auto-published" email.
+  if (existing.found && existing.content) {
+    var current = Utilities.newBlob(
+      Utilities.base64Decode(existing.content.replace(/\n/g, ''), Utilities.Charset.UTF_8)
+    ).getDataAsString('UTF-8');
+    if (current === content) {
+      console.log('[commitToGitHub_] ' + repoPath + ' unchanged — skipping commit.');
+      return null;
     }
   }
 
-  // PUT (create or update)
-  var payload = {
-    message: message,
-    content: Utilities.base64Encode(content, Utilities.Charset.UTF_8),
-    branch:  branch,
-  };
-  if (currentSha) payload.sha = currentSha;
+  var putResp = githubWriteFile_(
+    apiUrl, headers, repoPath, content, message, branch, existing.found ? existing.sha : null);
+  var code = putResp.getResponseCode();
 
-  var putResp = UrlFetchApp.fetch(apiUrl, {
-    method:            'put',
-    headers:           Object.assign({}, headers, { 'Content-Type': 'application/json' }),
-    payload:           JSON.stringify(payload),
-    muteHttpExceptions: true,
-  });
+  // A 422 after we believed the file absent means it was created between our read and our
+  // write — or that the read was wrong. Re-read and try once more rather than failing a
+  // publish over a race we can simply resolve.
+  if (code === 422 && !existing.found) {
+    console.log('[commitToGitHub_] 422 creating ' + repoPath + ' — it exists after all; re-reading and retrying.');
+    var recheck = githubReadFile_(apiUrl, branch, headers);
+    if (recheck.found) {
+      putResp = githubWriteFile_(apiUrl, headers, repoPath, content, message, branch, recheck.sha);
+      code    = putResp.getResponseCode();
+    }
+  }
 
-  var code    = putResp.getResponseCode();
   var respObj = JSON.parse(putResp.getContentText());
   if (code !== 200 && code !== 201) {
-    throw new Error('GitHub API ' + code + ': ' +
+    throw new Error('GitHub API ' + code + ' writing ' + repoPath + ': ' +
                     (respObj.message || JSON.stringify(respObj)));
   }
 
   return respObj.commit ? respObj.commit.html_url : null;
 }
+
 
 // ── Committee notification ────────────────────────────────────────────────────
 /**
@@ -932,7 +1007,16 @@ function publishEvents_() {
 
   var md     = lines.join('\n');
   var result = commitToGitHub_('docs/events.md', md, 'auto: refresh Events page from meeting schedule');
-  console.log('[publishEvents] events.md committed with ' + upcoming.length + ' upcoming event(s).');
+
+  // Said only when it is true. This used to print unconditionally, so a run logged
+  // "unchanged — skipping commit" and "events.md committed" one line apart, and anyone
+  // reading the log to find out whether the Events page had actually published was told
+  // both things at once.
+  if (result) {
+    console.log('[publishEvents] events.md committed with ' + upcoming.length + ' upcoming event(s).');
+  } else {
+    console.log('[publishEvents] events.md already current (' + upcoming.length + ' upcoming event(s)) — nothing committed.');
+  }
   return !!result;
 }
 
