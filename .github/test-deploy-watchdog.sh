@@ -113,6 +113,11 @@ echo "── gh-pages unreadable ──"
 FX_PAGES_DATE="" FX_RUNS=$(runs success 1) FX_OPEN_ISSUE="" drive
 grep -q "could not be read" <<<"$LOG" && ok "flags a deleted/unreadable branch" || no "unreadable" "$LOG"
 
+echo "── green PR build does not mask a failed deploy ──"
+PR_OVER_FAIL=$(printf '{"workflow_runs":[{"event":"pull_request","conclusion":"success","status":"completed","created_at":"%s","html_url":"https://x/2"},{"event":"push","conclusion":"startup_failure","status":"completed","created_at":"%s","html_url":"https://x/1"}]}' "$(ago 0)" "$(ago 1)")
+FX_PAGES_DATE=$(ago 1) FX_RUNS="$PR_OVER_FAIL" FX_OPEN_ISSUE="" drive
+grep -q "startup_failure" <<<"$LOG" && ok "judges the last deploying run, not the PR build" || no "PR masks failure" "$LOG"
+
 echo "── already reported → no daily repeat ──"
 FX_PAGES_DATE=$(ago 1) FX_RUNS=$(runs startup_failure 1) FX_OPEN_ISSUE="42" drive
 grep -q "issue create"  <<<"$LOG" && no "should not create a second issue" "$LOG" || ok "does not open a duplicate"
