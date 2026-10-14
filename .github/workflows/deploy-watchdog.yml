@@ -83,7 +83,9 @@ jobs:
           # startup_failure is the one that matters and the one a build-failure check
           # misses: it happens before there is a build, so it produces no log to read.
           runs=$(gh api "repos/$REPO/actions/workflows/$DEPLOY_WORKFLOW/runs?per_page=10" 2>/dev/null || true)
-          last=$(jq -r '.workflow_runs[0] // empty' <<<"${runs:-{\}}" 2>/dev/null || true)
+          # Pull-request runs only build (see deploy.yml), so they say nothing about the
+          # live site. Judge the last run that could have deployed.
+          last=$(jq -r '[.workflow_runs[] | select(.event != "pull_request")][0] // empty' <<<"${runs:-{\}}" 2>/dev/null || true)
 
           if [[ -z "$last" ]]; then
             problems+=("No runs of \`$DEPLOY_WORKFLOW\` were found at all. The workflow may have been renamed, disabled, or removed.")
