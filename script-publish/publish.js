@@ -1046,7 +1046,7 @@ function eventsJsonLd_(upcoming) {
       '@type': 'Event',
       'name': ev.type || 'GOTO Toastmasters Meeting',
       'startDate': day + 'T17:30:00' + offset,
-      'endDate': day + 'T21:00:00' + offset,
+      'endDate': day + 'T21:30:00' + offset,
       'eventAttendanceMode': 'https://schema.org/OfflineEventAttendanceMode',
       'eventStatus': 'https://schema.org/EventScheduled',
       'location': {
