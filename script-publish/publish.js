@@ -1005,6 +1005,12 @@ function publishEvents_() {
     });
   }
 
+  var jsonLd = eventsJsonLd_(upcoming);
+  if (jsonLd) {
+    lines.push(jsonLd);
+    lines.push('');
+  }
+
   var md     = lines.join('\n');
   var result = commitToGitHub_('docs/events.md', md, 'auto: refresh Events page from meeting schedule');
 
@@ -1018,6 +1024,57 @@ function publishEvents_() {
     console.log('[publishEvents] events.md already current (' + upcoming.length + ' upcoming event(s)) — nothing committed.');
   }
   return !!result;
+}
+
+/**
+ * schema.org Event JSON-LD for the upcoming meetings, as a <script> block for the
+ * foot of events.md, or '' when there are none. One Event per dated meeting, so
+ * search engines get a concrete startDate for each; the home page keeps its single
+ * recurring Event (theme/main.html) to describe the schedule.
+ *
+ * Venue, fee and organiser match theme/main.html — keep the two in step. The venue's
+ * street address and postcode are still TODO(address) there, so they are left out
+ * here too rather than guessed.
+ */
+function eventsJsonLd_(upcoming) {
+  if (!upcoming.length) return '';
+
+  var events = upcoming.map(function(ev) {
+    var day    = Utilities.formatDate(ev.date, 'Australia/Melbourne', 'yyyy-MM-dd');
+    var offset = melbourneOffset_(ev.date);
+    return {
+      '@type': 'Event',
+      'name': ev.type || 'GOTO Toastmasters Meeting',
+      'startDate': day + 'T17:30:00' + offset,
+      'endDate': day + 'T21:00:00' + offset,
+      'eventAttendanceMode': 'https://schema.org/OfflineEventAttendanceMode',
+      'eventStatus': 'https://schema.org/EventScheduled',
+      'location': {
+        '@type': 'Place',
+        'name': 'Mail Exchange Hotel',
+        'address': {
+          '@type': 'PostalAddress',
+          'addressLocality': 'Melbourne',
+          'addressRegion': 'VIC',
+          'addressCountry': 'AU'
+        }
+      },
+      'offers': {
+        '@type': 'Offer',
+        'name': 'Guest ticket',
+        'description': 'Standard guest fee covering the meal. Booking early may be cheaper and booking at late notice more expensive.',
+        'price': '55',
+        'priceCurrency': 'AUD',
+        'url': ev.url || 'https://www.eventbrite.com.au/o/goto-toastmasters-111570638511'
+      },
+      'organizer': { '@id': 'https://gototoastmasters.com.au/#organization' }
+    };
+  });
+
+  // Escape '<' so a sheet value containing "</script>" cannot end the block early.
+  var json = JSON.stringify({ '@context': 'https://schema.org', '@graph': events }, null, 2)
+    .replace(/</g, '\\u003c');
+  return '<script type="application/ld+json">\n' + json + '\n</script>';
 }
 
 /**
