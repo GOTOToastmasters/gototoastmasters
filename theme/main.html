@@ -1,0 +1,95 @@
+{% extends "base.html" %}
+
+{#
+  Structured data (schema.org JSON-LD) so search engines and AI assistants can
+  describe the club accurately. Every fact here is taken from existing site
+  content (docs/index.md, docs/pitch.md, mkdocs.yml). Do not add details that
+  are not published on the site.
+
+  Placeholders still to fill in (deliberately left out of the JSON so the live
+  markup stays valid — add each field once the fact is confirmed):
+    TODO(logo):     "logo" — a club-specific logo URL. The site header uses the
+                    Toastmasters International masthead, which is TI's logo, not
+                    the club's, so it is not used here.
+    TODO(club-no):  "identifier" — the Toastmasters International club number.
+    TODO(district): the Toastmasters district (e.g. in "description" or a
+                    "memberOf" entry) — not stated anywhere on the site.
+    TODO(address):  "streetAddress" / "postalCode" for the venue — the site only
+                    names the Mail Exchange Hotel in the Melbourne CBD.
+#}
+{% block extrahead %}
+  {{ super() }}
+  <script type="application/ld+json">
+  {
+    "@context": "https://schema.org",
+    "@type": "Organization",
+    "@id": "https://gototoastmasters.com.au/#organization",
+    "name": "GOTO Toastmasters",
+    "url": "https://gototoastmasters.com.au/",
+    "description": "A Toastmasters dinner club that meets approximately monthly on a Tuesday evening in the Melbourne CBD for dinner and a meeting, helping members build public speaking and leadership skills.",
+    "foundingDate": "2024-05-04",
+    "email": "goto.toastmasters.committee@gmail.com",
+    "address": {
+      "@type": "PostalAddress",
+      "addressLocality": "Melbourne",
+      "addressRegion": "VIC",
+      "addressCountry": "AU"
+    },
+    "sameAs": [
+      "https://www.linkedin.com/company/goto-toastmasters",
+      "https://www.eventbrite.com.au/o/goto-toastmasters-111570638511"
+    ],
+    "parentOrganization": {
+      "@type": "Organization",
+      "name": "Toastmasters International",
+      "url": "https://www.toastmasters.org/"
+    }
+  }
+  </script>
+  {% if page and page.is_homepage %}
+  <script type="application/ld+json">
+  {
+    "@context": "https://schema.org",
+    "@type": "Event",
+    "name": "GOTO Toastmasters dinner meeting",
+    "description": "Monthly Toastmasters dinner meeting in the Melbourne CBD: pre-meeting social from 5:30pm, seated by 6pm, formal close 9pm, followed by a post-meeting social. Guests are welcome but must pre-book, ideally at least a week in advance, and pay a fee to cover their meal.",
+    "url": "https://gototoastmasters.com.au/events/",
+    "eventAttendanceMode": "https://schema.org/OfflineEventAttendanceMode",
+    "eventStatus": "https://schema.org/EventScheduled",
+    "isAccessibleForFree": false,
+    "eventSchedule": {
+      "@type": "Schedule",
+      "byDay": "https://schema.org/Tuesday",
+      "repeatFrequency": "P1M",
+      "startTime": "17:30:00",
+      "endTime": "21:00:00",
+      "scheduleTimezone": "Australia/Melbourne"
+    },
+    "location": {
+      "@type": "Place",
+      "name": "Mail Exchange Hotel",
+      "address": {
+        "@type": "PostalAddress",
+        "addressLocality": "Melbourne",
+        "addressRegion": "VIC",
+        "addressCountry": "AU"
+      }
+    },
+    "offers": {
+      "@type": "Offer",
+      "name": "Guest ticket",
+      "description": "Standard guest fee covering the meal. Booking early may be cheaper and booking at late notice more expensive.",
+      "price": "55",
+      "priceCurrency": "AUD",
+      "url": "https://www.eventbrite.com.au/o/goto-toastmasters-111570638511"
+    },
+    "organizer": {
+      "@type": "Organization",
+      "@id": "https://gototoastmasters.com.au/#organization",
+      "name": "GOTO Toastmasters",
+      "url": "https://gototoastmasters.com.au/"
+    }
+  }
+  </script>
+  {% endif %}
+{% endblock %}
