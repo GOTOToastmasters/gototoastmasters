@@ -143,7 +143,7 @@ const evs = ld['@graph'];
 A.eq(ld['@context'], 'https://schema.org', '@context set once');
 A.eq(evs.length, 3, 'three upcoming meetings, the past one dropped');
 A.eq(evs.map((e) => e.startDate), ['2026-10-27T17:30:00+11:00', '2026-11-10T17:30:00+11:00', '2027-06-09T17:30:00+10:00'], 'startDate is 5:30 PM with that date\'s offset');
-A.eq(evs.map((e) => e.endDate), ['2026-10-27T21:00:00+11:00', '2026-11-10T21:00:00+11:00', '2027-06-09T21:00:00+10:00'], 'endDate is 9:00 PM with that date\'s offset');
+A.eq(evs.map((e) => e.endDate), ['2026-10-27T21:30:00+11:00', '2026-11-10T21:30:00+11:00', '2027-06-09T21:30:00+10:00'], 'endDate is 9:30 PM with that date\'s offset');
 A.eq(evs.map((e) => e.name), ['Contest', 'Regular', 'Special </script><b>'], 'name is the type label, round-tripped intact');
 A.eq(evs[0].eventAttendanceMode, 'https://schema.org/OfflineEventAttendanceMode', 'offline attendance');
 A.eq(evs[0].eventStatus, 'https://schema.org/EventScheduled', 'scheduled');
