@@ -58,7 +58,7 @@ One or more of the following to meet membership criteria for this Toastmasters c
 
 - Seat taken by 6pm
 
-- Formal close 9pm (we try very hard to hit this time - latest we have finished is 9:05pm)
+- Formal close 9.15pm (we try very hard to hit this time)
 
 - Post meeting social until late
 
