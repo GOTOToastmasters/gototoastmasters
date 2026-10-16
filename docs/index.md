@@ -21,7 +21,7 @@ We are a toastmasters club, part of Toastmasters International, a nonprofit educ
 -->
 
 - **When:** approximately monthly on a Tuesday evening (which week of the month varies). See [upcoming events](events.md) for dates.
-- **Time:** pre-meeting social from 5:30pm, seated by 6pm, formal close 9pm, then a post-meeting social.
+- **Time:** pre-meeting social from 5:30pm, seated by 6pm, finishing at 9:30pm.
 - **Where:** Melbourne CBD. Our formal dinner meetings are currently held at the Mail Exchange Hotel.
 - **Guests:** welcome. Please pre-book, ideally at least a week in advance, on [Eventbrite](https://www.eventbrite.com.au/o/goto-toastmasters-111570638511). Guests pay a fee to cover their meal: the standard guest fee is $55, and booking early may be cheaper while late notice may cost more.
 - **Contact:** [goto.toastmasters.committee@gmail.com](mailto:goto.toastmasters.committee@gmail.com)
