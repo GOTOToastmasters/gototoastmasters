@@ -1,0 +1,25 @@
+# GOTO Toastmasters — https://gototoastmasters.com.au
+#
+# The public club pages are open to search engines and AI assistants so they can
+# describe the club accurately. The committee onboarding hub is private (behind a
+# committee sign-in) and is excluded for every crawler.
+#
+# Note: a crawler obeys only the most specific group that names it, so each named
+# group below repeats the private-path rule.
+
+User-agent: GPTBot
+User-agent: OAI-SearchBot
+User-agent: ClaudeBot
+User-agent: Claude-SearchBot
+User-agent: PerplexityBot
+User-agent: Google-Extended
+User-agent: Googlebot
+User-agent: Bingbot
+Allow: /
+Disallow: /onboarding/
+
+User-agent: *
+Allow: /
+Disallow: /onboarding/
+
+Sitemap: https://gototoastmasters.com.au/sitemap.xml
