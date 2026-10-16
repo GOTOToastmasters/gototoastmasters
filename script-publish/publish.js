@@ -990,7 +990,7 @@ function publishEvents_() {
 
       lines.push(ev.url ? '## [' + label + '](' + ev.url + ')' : '## ' + label);
       lines.push('');
-      lines.push('**' + dateFmt + '** &nbsp;·&nbsp; 5:30 PM AEST &nbsp;·&nbsp; Melbourne CBD');
+      lines.push('**' + dateFmt + '** &nbsp;·&nbsp; 5:30 PM ' + melbourneZoneLabel_(ev.date) + ' &nbsp;·&nbsp; Melbourne CBD');
       lines.push('');
       if (ev.url) {
         lines.push('[Register on Eventbrite ↗](' + ev.url + ')');
@@ -1018,6 +1018,30 @@ function publishEvents_() {
     console.log('[publishEvents] events.md already current (' + upcoming.length + ' upcoming event(s)) — nothing committed.');
   }
   return !!result;
+}
+
+/**
+ * Melbourne's UTC offset ("+11:00" or "+10:00") for a meeting on the given date.
+ * Probed at 07:30 UTC that day (5:30 PM AEST, 6:30 PM AEDT), so a changeover Sunday
+ * gets the offset in force at the meeting rather than at midnight.
+ */
+function melbourneOffset_(d) {
+  var day   = Utilities.formatDate(d, 'Australia/Melbourne', 'yyyy-MM-dd').split('-');
+  var probe = new Date(Date.UTC(parseInt(day[0], 10), parseInt(day[1], 10) - 1, parseInt(day[2], 10), 7, 30));
+  return Utilities.formatDate(probe, 'Australia/Melbourne', 'XXX');
+}
+
+/**
+ * The zone label for a meeting on the given date: AEDT in daylight saving, AEST
+ * otherwise. Mapped from the offset rather than the 'z' pattern, because 'z' may
+ * come back as "GMT+11:00" instead of an abbreviation. An offset that is neither
+ * says "Melbourne time" rather than guess.
+ */
+function melbourneZoneLabel_(d) {
+  var offset = melbourneOffset_(d);
+  if (offset === '+11:00') return 'AEDT';
+  if (offset === '+10:00') return 'AEST';
+  return 'Melbourne time';
 }
 
 /**
