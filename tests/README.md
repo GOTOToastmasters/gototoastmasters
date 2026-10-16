@@ -15,6 +15,11 @@ drift. It pins the regression that stopped the Events page publishing after
 so the *write* went out without a `sha` and GitHub answered
 `422 "sha" wasn't supplied` — an error naming the wrong request.
 
+**`publish-events.test.js`** works the same way for the Events page helpers in
+`publish.js`, with `Utilities.formatDate` stood in by Node's own tz database. It
+pins the AEST/AEDT label (#71) across both daylight-saving changeovers. It proves
+the helpers' logic, not what Apps Script's real `formatDate` returns.
+
 ## Run
 
 ```bash
