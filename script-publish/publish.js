@@ -990,7 +990,7 @@ function publishEvents_() {
 
       lines.push(ev.url ? '## [' + label + '](' + ev.url + ')' : '## ' + label);
       lines.push('');
-      lines.push('**' + dateFmt + '** &nbsp;·&nbsp; 5:30 PM AEST &nbsp;·&nbsp; Melbourne CBD');
+      lines.push('**' + dateFmt + '** &nbsp;·&nbsp; 5:30 PM ' + melbourneZoneLabel_(ev.date) + ' &nbsp;·&nbsp; Melbourne CBD');
       lines.push('');
       if (ev.url) {
         lines.push('[Register on Eventbrite ↗](' + ev.url + ')');
@@ -1003,6 +1003,12 @@ function publishEvents_() {
       lines.push('---');
       lines.push('');
     });
+  }
+
+  var jsonLd = eventsJsonLd_(upcoming);
+  if (jsonLd) {
+    lines.push(jsonLd);
+    lines.push('');
   }
 
   var md     = lines.join('\n');
@@ -1018,6 +1024,81 @@ function publishEvents_() {
     console.log('[publishEvents] events.md already current (' + upcoming.length + ' upcoming event(s)) — nothing committed.');
   }
   return !!result;
+}
+
+/**
+ * schema.org Event JSON-LD for the upcoming meetings, as a <script> block for the
+ * foot of events.md, or '' when there are none. One Event per dated meeting, so
+ * search engines get a concrete startDate for each; the home page keeps its single
+ * recurring Event (theme/main.html) to describe the schedule.
+ *
+ * Venue, fee and organiser match theme/main.html — keep the two in step. The venue's
+ * street address and postcode are still TODO(address) there, so they are left out
+ * here too rather than guessed.
+ */
+function eventsJsonLd_(upcoming) {
+  if (!upcoming.length) return '';
+
+  var events = upcoming.map(function(ev) {
+    var day    = Utilities.formatDate(ev.date, 'Australia/Melbourne', 'yyyy-MM-dd');
+    var offset = melbourneOffset_(ev.date);
+    return {
+      '@type': 'Event',
+      'name': ev.type || 'GOTO Toastmasters Meeting',
+      'startDate': day + 'T17:30:00' + offset,
+      'endDate': day + 'T21:30:00' + offset,
+      'eventAttendanceMode': 'https://schema.org/OfflineEventAttendanceMode',
+      'eventStatus': 'https://schema.org/EventScheduled',
+      'location': {
+        '@type': 'Place',
+        'name': 'Mail Exchange Hotel',
+        'address': {
+          '@type': 'PostalAddress',
+          'addressLocality': 'Melbourne',
+          'addressRegion': 'VIC',
+          'addressCountry': 'AU'
+        }
+      },
+      'offers': {
+        '@type': 'Offer',
+        'name': 'Guest ticket',
+        'description': 'Standard guest fee covering the meal. Booking early may be cheaper and booking at late notice more expensive.',
+        'price': '55',
+        'priceCurrency': 'AUD',
+        'url': ev.url || 'https://www.eventbrite.com.au/o/goto-toastmasters-111570638511'
+      },
+      'organizer': { '@id': 'https://gototoastmasters.com.au/#organization' }
+    };
+  });
+
+  // Escape '<' so a sheet value containing "</script>" cannot end the block early.
+  var json = JSON.stringify({ '@context': 'https://schema.org', '@graph': events }, null, 2)
+    .replace(/</g, '\\u003c');
+  return '<script type="application/ld+json">\n' + json + '\n</script>';
+}
+
+/**
+ * Melbourne's UTC offset ("+11:00" or "+10:00") for a meeting on the given date.
+ * Probed at 07:30 UTC that day (5:30 PM AEST, 6:30 PM AEDT), so a changeover Sunday
+ * gets the offset in force at the meeting rather than at midnight.
+ */
+function melbourneOffset_(d) {
+  var day   = Utilities.formatDate(d, 'Australia/Melbourne', 'yyyy-MM-dd').split('-');
+  var probe = new Date(Date.UTC(parseInt(day[0], 10), parseInt(day[1], 10) - 1, parseInt(day[2], 10), 7, 30));
+  return Utilities.formatDate(probe, 'Australia/Melbourne', 'XXX');
+}
+
+/**
+ * The zone label for a meeting on the given date: AEDT in daylight saving, AEST
+ * otherwise. Mapped from the offset rather than the 'z' pattern, because 'z' may
+ * come back as "GMT+11:00" instead of an abbreviation. An offset that is neither
+ * says "Melbourne time" rather than guess.
+ */
+function melbourneZoneLabel_(d) {
+  var offset = melbourneOffset_(d);
+  if (offset === '+11:00') return 'AEDT';
+  if (offset === '+10:00') return 'AEST';
+  return 'Melbourne time';
 }
 
 /**
