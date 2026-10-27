@@ -23,6 +23,7 @@ nav:
   - Onboarding Hub: onboarding/index.html
 theme:
   name: 'material'
+  custom_dir: 'theme'      # Template overrides (structured data in theme/main.html).
   palette:
     scheme: 'default'
     primary: 'custom'
