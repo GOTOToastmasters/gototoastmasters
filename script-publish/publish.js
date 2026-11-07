@@ -1110,7 +1110,19 @@ function parseMeetingDate_(val) {
   if (val instanceof Date) return isNaN(val.getTime()) ? null : val;
   var s  = val.toString().trim();
   var au = s.match(/^(\d{1,2})\/(\d{1,2})\/(\d{4})$/);
-  if (au) return new Date(parseInt(au[3]), parseInt(au[2]) - 1, parseInt(au[1]));
+  if (au) {
+    var yy = parseInt(au[3], 10), mm = parseInt(au[2], 10), dd = parseInt(au[1], 10);
+    var au_d = new Date(yy, mm - 1, dd);
+    // JS rolls impossible dates forward rather than rejecting them: 31/02/2026 becomes
+    // 3 Mar, 29/02/2027 becomes 1 Mar, 32/13/2026 becomes 1 Feb 2027. Left alone, a typo
+    // in the Meetings sheet would publish a meeting on a date nobody scheduled — and the
+    // Events page is what members plan around. Reject it instead; the row is then dropped
+    // and the mistake stays visible in the sheet.
+    if (au_d.getFullYear() !== yy || au_d.getMonth() !== mm - 1 || au_d.getDate() !== dd) {
+      return null;
+    }
+    return au_d;
+  }
   var d = new Date(s);
   return isNaN(d.getTime()) ? null : d;
 }
