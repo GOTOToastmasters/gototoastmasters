@@ -158,6 +158,36 @@ const empty = buildPublish([['1/9/2026', 'Regular', '', '', '']])();
 A.ok(empty.includes('No upcoming events scheduled'), 'empty page still says so');
 A.ok(!empty.includes('application/ld+json'), 'and carries no JSON-LD');
 
+A.section('a malformed sheet cell yields no date');
+A.eq(api.parseMeetingDate_(''),            null, 'empty cell');
+A.eq(api.parseMeetingDate_('   '),         null, 'whitespace only');
+A.eq(api.parseMeetingDate_(null),          null, 'null');
+A.eq(api.parseMeetingDate_(undefined),     null, 'undefined');
+A.eq(api.parseMeetingDate_('not a date'),  null, 'free text');
+A.eq(api.parseMeetingDate_(new Date('x')), null, 'an Invalid Date object');
+
+// JS rolls impossible dates forward instead of rejecting them, so 31/02 used to come back
+// as 3 March and publish a meeting on a day nobody scheduled. The Events page is what
+// members plan around, so a typo must drop the row rather than quietly relocate it.
+A.section('an impossible date is rejected, not rolled forward');
+A.eq(api.parseMeetingDate_('31/02/2026'), null, '31 February');
+A.eq(api.parseMeetingDate_('29/02/2027'), null, '29 February in a non-leap year');
+A.eq(api.parseMeetingDate_('32/13/2026'), null, 'day 32 of month 13');
+A.eq(api.parseMeetingDate_('00/01/2026'), null, 'day zero');
+A.ok(api.parseMeetingDate_('29/02/2028') instanceof Date, '29 February in a leap year is still fine');
+A.eq(api.parseMeetingDate_('10/11/2026').toDateString(), 'Tue Nov 10 2026', 'DD/MM/YYYY still reads as day-first');
+
+A.section('bad rows are dropped end to end, and do not throw');
+const mixed = buildPublish([
+  ['',           'Regular', '', '', ''],   // empty date
+  ['not a date', 'Regular', '', '', ''],   // unparseable
+  ['31/02/2027', 'Regular', '', '', ''],   // impossible — must not appear as 3 March
+  ['27/10/2026', 'Contest', '', '', ''],   // the only good upcoming row
+])();
+const mixedLd = mixed.match(/<script type="application\/ld\+json">\n([\s\S]*?)\n<\/script>/);
+A.eq(JSON.parse(mixedLd[1])['@graph'].length, 1, 'only the one valid meeting is published');
+A.ok(!mixed.includes('March 2027'), 'the impossible date did not reappear as a real one');
+
 if (process.env.EVENTS_MD_OUT) fs.writeFileSync(process.env.EVENTS_MD_OUT, md);
 
 process.exit(A.summary() ? 0 : 1);
