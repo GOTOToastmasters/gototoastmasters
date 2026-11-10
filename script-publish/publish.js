@@ -990,7 +990,7 @@ function publishEvents_() {
 
       lines.push(ev.url ? '## [' + label + '](' + ev.url + ')' : '## ' + label);
       lines.push('');
-      lines.push('**' + dateFmt + '** &nbsp;·&nbsp; 5:30 PM AEST &nbsp;·&nbsp; Melbourne CBD');
+      lines.push('**' + dateFmt + '** &nbsp;·&nbsp; 5:30 PM ' + melbourneZoneLabel_(ev.date) + ' &nbsp;·&nbsp; Melbourne CBD');
       lines.push('');
       if (ev.url) {
         lines.push('[Register on Eventbrite ↗](' + ev.url + ')');
@@ -1003,6 +1003,12 @@ function publishEvents_() {
       lines.push('---');
       lines.push('');
     });
+  }
+
+  var jsonLd = eventsJsonLd_(upcoming);
+  if (jsonLd) {
+    lines.push(jsonLd);
+    lines.push('');
   }
 
   var md     = lines.join('\n');
@@ -1021,6 +1027,81 @@ function publishEvents_() {
 }
 
 /**
+ * schema.org Event JSON-LD for the upcoming meetings, as a <script> block for the
+ * foot of events.md, or '' when there are none. One Event per dated meeting, so
+ * search engines get a concrete startDate for each; the home page keeps its single
+ * recurring Event (theme/main.html) to describe the schedule.
+ *
+ * Venue, fee and organiser match theme/main.html — keep the two in step. The venue's
+ * street address and postcode are still TODO(address) there, so they are left out
+ * here too rather than guessed.
+ */
+function eventsJsonLd_(upcoming) {
+  if (!upcoming.length) return '';
+
+  var events = upcoming.map(function(ev) {
+    var day    = Utilities.formatDate(ev.date, 'Australia/Melbourne', 'yyyy-MM-dd');
+    var offset = melbourneOffset_(ev.date);
+    return {
+      '@type': 'Event',
+      'name': ev.type || 'GOTO Toastmasters Meeting',
+      'startDate': day + 'T17:30:00' + offset,
+      'endDate': day + 'T21:30:00' + offset,
+      'eventAttendanceMode': 'https://schema.org/OfflineEventAttendanceMode',
+      'eventStatus': 'https://schema.org/EventScheduled',
+      'location': {
+        '@type': 'Place',
+        'name': 'Mail Exchange Hotel',
+        'address': {
+          '@type': 'PostalAddress',
+          'addressLocality': 'Melbourne',
+          'addressRegion': 'VIC',
+          'addressCountry': 'AU'
+        }
+      },
+      'offers': {
+        '@type': 'Offer',
+        'name': 'Guest ticket',
+        'description': 'Standard guest fee covering the meal. Booking early may be cheaper and booking at late notice more expensive.',
+        'price': '55',
+        'priceCurrency': 'AUD',
+        'url': ev.url || 'https://www.eventbrite.com.au/o/goto-toastmasters-111570638511'
+      },
+      'organizer': { '@id': 'https://gototoastmasters.com.au/#organization' }
+    };
+  });
+
+  // Escape '<' so a sheet value containing "</script>" cannot end the block early.
+  var json = JSON.stringify({ '@context': 'https://schema.org', '@graph': events }, null, 2)
+    .replace(/</g, '\\u003c');
+  return '<script type="application/ld+json">\n' + json + '\n</script>';
+}
+
+/**
+ * Melbourne's UTC offset ("+11:00" or "+10:00") for a meeting on the given date.
+ * Probed at 07:30 UTC that day (5:30 PM AEST, 6:30 PM AEDT), so a changeover Sunday
+ * gets the offset in force at the meeting rather than at midnight.
+ */
+function melbourneOffset_(d) {
+  var day   = Utilities.formatDate(d, 'Australia/Melbourne', 'yyyy-MM-dd').split('-');
+  var probe = new Date(Date.UTC(parseInt(day[0], 10), parseInt(day[1], 10) - 1, parseInt(day[2], 10), 7, 30));
+  return Utilities.formatDate(probe, 'Australia/Melbourne', 'XXX');
+}
+
+/**
+ * The zone label for a meeting on the given date: AEDT in daylight saving, AEST
+ * otherwise. Mapped from the offset rather than the 'z' pattern, because 'z' may
+ * come back as "GMT+11:00" instead of an abbreviation. An offset that is neither
+ * says "Melbourne time" rather than guess.
+ */
+function melbourneZoneLabel_(d) {
+  var offset = melbourneOffset_(d);
+  if (offset === '+11:00') return 'AEDT';
+  if (offset === '+10:00') return 'AEST';
+  return 'Melbourne time';
+}
+
+/**
  * Parse a date value from the Meetings sheet.
  * Handles Date objects, ISO strings, and DD/MM/YYYY strings.
  */
@@ -1029,7 +1110,19 @@ function parseMeetingDate_(val) {
   if (val instanceof Date) return isNaN(val.getTime()) ? null : val;
   var s  = val.toString().trim();
   var au = s.match(/^(\d{1,2})\/(\d{1,2})\/(\d{4})$/);
-  if (au) return new Date(parseInt(au[3]), parseInt(au[2]) - 1, parseInt(au[1]));
+  if (au) {
+    var yy = parseInt(au[3], 10), mm = parseInt(au[2], 10), dd = parseInt(au[1], 10);
+    var au_d = new Date(yy, mm - 1, dd);
+    // JS rolls impossible dates forward rather than rejecting them: 31/02/2026 becomes
+    // 3 Mar, 29/02/2027 becomes 1 Mar, 32/13/2026 becomes 1 Feb 2027. Left alone, a typo
+    // in the Meetings sheet would publish a meeting on a date nobody scheduled — and the
+    // Events page is what members plan around. Reject it instead; the row is then dropped
+    // and the mistake stays visible in the sheet.
+    if (au_d.getFullYear() !== yy || au_d.getMonth() !== mm - 1 || au_d.getDate() !== dd) {
+      return null;
+    }
+    return au_d;
+  }
   var d = new Date(s);
   return isNaN(d.getTime()) ? null : d;
 }

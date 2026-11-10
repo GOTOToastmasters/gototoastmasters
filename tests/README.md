@@ -15,6 +15,14 @@ drift. It pins the regression that stopped the Events page publishing after
 so the *write* went out without a `sha` and GitHub answered
 `422 "sha" wasn't supplied` — an error naming the wrong request.
 
+**`publish-events.test.js`** works the same way for the Events page helpers in
+`publish.js`, with `Utilities.formatDate` stood in by Node's own tz database. It
+pins the AEST/AEDT label (#71) across both daylight-saving changeovers, and runs
+`publishEvents_()` against a mocked Meetings sheet to check the per-meeting Event
+JSON-LD (#72). `EVENTS_MD_OUT=path` also writes the generated `events.md`, for a
+`mkdocs build` check. It proves the logic, not what Apps Script's real
+`formatDate` returns.
+
 ## Run
 
 ```bash
