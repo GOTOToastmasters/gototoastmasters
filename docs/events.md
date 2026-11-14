@@ -4,12 +4,6 @@ _This page updates automatically from the meeting schedule._
 
 [→ Agenda for our next meeting on Easy-Speak](https://easy-speak.org/view_meeting.php?c=13017&show=next)
 
-## Contest
-
-**Saturday 14 November 2026** &nbsp;·&nbsp; 5:30 PM AEST &nbsp;·&nbsp; Melbourne CBD
-
----
-
 ## Special
 
 **Tuesday 24 November 2026** &nbsp;·&nbsp; 5:30 PM AEST &nbsp;·&nbsp; Melbourne CBD
