@@ -6,14 +6,6 @@ _This page updates automatically from the meeting schedule._
 
 ## Special
 
-**Tuesday 24 November 2026** &nbsp;·&nbsp; 5:30 PM AEST &nbsp;·&nbsp; Melbourne CBD
-
-[View agenda on Easy-Speak ↗](https://easy-speak.org/view_meeting.php?t=649641)
-
----
-
-## Special
-
 **Tuesday 8 December 2026** &nbsp;·&nbsp; 5:30 PM AEST &nbsp;·&nbsp; Melbourne CBD
 
 [View agenda on Easy-Speak ↗](https://easy-speak.org/view_meeting.php?t=636319)
