@@ -1,0 +1,791 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <meta name="referrer" content="strict-origin-when-cross-origin">
+  <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'unsafe-inline'; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src https://fonts.gstatic.com; img-src 'self' https://ccdn.toastmasters.org; connect-src 'self' https://script.google.com https://script.googleusercontent.com;">
+  <title>Join GOTO Toastmasters</title>
+  <link rel="icon" href="https://ccdn.toastmasters.org/medias/files/brand-materials/loyal-blue-masthead-logo.png">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link href="https://fonts.googleapis.com/css2?family=Montserrat:wght@400;500;600;700&display=swap" rel="stylesheet">
+  <style>
+    /* ── Brand tokens ────────────────────────────────────── */
+    :root {
+      --primary:       #004165;
+      --primary-light: #006094;
+      --accent:        #0092d0;
+      --bg:            #f5f7fa;
+      --card:          #ffffff;
+      --text:          #1a1a2e;
+      --muted:         #6b7280;
+      --border:        #d1d5db;
+      --error:         #dc2626;
+      --success:       #16a34a;
+      --radius:        8px;
+      --shadow:        0 2px 16px rgba(0,65,101,.10);
+    }
+
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+    body {
+      font-family: 'Montserrat', sans-serif;
+      background: var(--bg);
+      color: var(--text);
+      min-height: 100vh;
+      display: flex;
+      flex-direction: column;
+    }
+
+    /* ── Header ──────────────────────────────────────────── */
+    /* ── Site header & nav ───────────────────────────────── */
+    header {
+      background: var(--primary);
+      color: #fff;
+    }
+    .header-bar {
+      display: flex;
+      align-items: center;
+      gap: 16px;
+      padding: 12px 24px;
+    }
+    .header-bar a { text-decoration: none; color: inherit; }
+    header img { height: 36px; flex-shrink: 0; }
+    .header-bar h1  { font-size: 1.05rem; font-weight: 700; letter-spacing: .02em; }
+    .header-bar p   { font-size: .75rem; opacity: .8; margin-top: 1px; }
+    nav.site-nav {
+      display: flex;
+      gap: 0;
+      padding: 0 16px;
+      overflow-x: auto;
+      border-top: 1px solid rgba(255,255,255,.15);
+    }
+    nav.site-nav a {
+      display: block;
+      padding: 10px 14px;
+      font-size: .8rem;
+      font-weight: 600;
+      color: rgba(255,255,255,.8);
+      text-decoration: none;
+      white-space: nowrap;
+      border-bottom: 2px solid transparent;
+      transition: color .15s, border-color .15s;
+    }
+    nav.site-nav a:hover,
+    nav.site-nav a.active {
+      color: #fff;
+      border-bottom-color: var(--accent);
+    }
+
+    /* ── Layout ──────────────────────────────────────────── */
+    main {
+      flex: 1;
+      display: flex;
+      justify-content: center;
+      padding: 40px 16px 60px;
+    }
+
+    .card {
+      background: var(--card);
+      border-radius: var(--radius);
+      box-shadow: var(--shadow);
+      padding: 40px 44px;
+      width: 100%;
+      max-width: 620px;
+    }
+
+    .card h2 {
+      font-size: 1.4rem;
+      font-weight: 700;
+      color: var(--primary);
+      margin-bottom: 6px;
+    }
+    .card > p {
+      color: var(--muted);
+      font-size: .875rem;
+      margin-bottom: 32px;
+      line-height: 1.6;
+    }
+
+    /* ── Form sections ───────────────────────────────────── */
+    .section-title {
+      font-size: .7rem;
+      font-weight: 700;
+      letter-spacing: .1em;
+      text-transform: uppercase;
+      color: var(--muted);
+      margin: 28px 0 16px;
+      padding-bottom: 6px;
+      border-bottom: 1px solid var(--border);
+    }
+    .section-title:first-of-type { margin-top: 0; }
+
+    .row { display: flex; gap: 16px; }
+    .row .field { flex: 1; }
+
+    .field {
+      margin-bottom: 18px;
+    }
+    .field label {
+      display: block;
+      font-size: .8rem;
+      font-weight: 600;
+      margin-bottom: 6px;
+      color: var(--text);
+    }
+    .field label .req { color: var(--error); margin-left: 2px; }
+
+    .field input,
+    .field select,
+    .field textarea {
+      width: 100%;
+      padding: 10px 14px;
+      border: 1.5px solid var(--border);
+      border-radius: var(--radius);
+      font-family: inherit;
+      font-size: .875rem;
+      color: var(--text);
+      background: #fff;
+      transition: border-color .15s;
+      appearance: none;
+    }
+    .field input:focus,
+    .field select:focus,
+    .field textarea:focus {
+      outline: none;
+      border-color: var(--accent);
+      box-shadow: 0 0 0 3px rgba(0,146,208,.15);
+    }
+    .field textarea { resize: vertical; min-height: 76px; }
+
+    .field .hint {
+      font-size: .75rem;
+      color: var(--muted);
+      margin-top: 5px;
+    }
+
+    /* ── Conditional fields ──────────────────────────────── */
+    .conditional { display: none; }
+    .conditional.visible { display: block; }
+
+    /* ── Radio / checkbox groups ─────────────────────────── */
+    .radio-group { display: flex; gap: 12px; flex-wrap: wrap; }
+    .radio-group label {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      font-size: .875rem;
+      font-weight: 500;
+      cursor: pointer;
+    }
+
+    /* Custom radio button */
+    .radio-group input[type="radio"] {
+      appearance: none;
+      -webkit-appearance: none;
+      width: 18px; height: 18px;
+      border: 2px solid var(--border);
+      border-radius: 50%;
+      cursor: pointer;
+      flex-shrink: 0;
+      transition: border-color .15s, background .15s;
+      position: relative;
+    }
+    .radio-group input[type="radio"]:hover {
+      border-color: var(--primary-light);
+    }
+    .radio-group input[type="radio"]:checked {
+      border-color: var(--primary);
+      background: var(--primary);
+      box-shadow: inset 0 0 0 3px #fff;
+    }
+    .radio-group input[type="radio"]:focus-visible {
+      outline: 3px solid var(--accent);
+      outline-offset: 2px;
+    }
+
+    /* Custom checkbox */
+    .checkbox-row {
+      display: flex;
+      align-items: flex-start;
+      gap: 10px;
+      margin-bottom: 24px;
+    }
+    .checkbox-row input[type="checkbox"] {
+      appearance: none;
+      -webkit-appearance: none;
+      width: 18px; height: 18px;
+      min-width: 18px;
+      margin-top: 1px;
+      border: 2px solid var(--border);
+      border-radius: 4px;
+      cursor: pointer;
+      flex-shrink: 0;
+      transition: border-color .15s, background .15s;
+      position: relative;
+      display: grid;
+      place-content: center;
+    }
+    .checkbox-row input[type="checkbox"]:hover {
+      border-color: var(--primary-light);
+    }
+    .checkbox-row input[type="checkbox"]:checked {
+      background: var(--primary);
+      border-color: var(--primary);
+    }
+    .checkbox-row input[type="checkbox"]:checked::after {
+      content: '';
+      width: 10px; height: 6px;
+      border-left: 2px solid #fff;
+      border-bottom: 2px solid #fff;
+      transform: rotate(-45deg) translateY(-1px);
+    }
+    .checkbox-row input[type="checkbox"]:focus-visible {
+      outline: 3px solid var(--accent);
+      outline-offset: 2px;
+    }
+    .checkbox-row label {
+      font-size: .8rem;
+      color: var(--muted);
+      line-height: 1.6;
+      cursor: pointer;
+    }
+    .checkbox-row label a { color: var(--primary-light); }
+
+    /* ── Submit ──────────────────────────────────────────── */
+    .btn-submit {
+      width: 100%;
+      padding: 14px;
+      background: var(--primary);
+      color: #fff;
+      border: none;
+      border-radius: var(--radius);
+      font-family: inherit;
+      font-size: 1rem;
+      font-weight: 700;
+      cursor: pointer;
+      transition: background .15s, transform .1s;
+      letter-spacing: .02em;
+    }
+    .btn-submit:hover:not(:disabled) { background: var(--primary-light); }
+    .btn-submit:active:not(:disabled) { transform: scale(.99); }
+    .btn-submit:disabled { opacity: .6; cursor: not-allowed; }
+
+    /* ── Status messages ─────────────────────────────────── */
+    .msg { display: none; border-radius: var(--radius); padding: 16px 20px; margin-bottom: 20px; font-size: .875rem; line-height: 1.6; }
+    .msg.visible { display: block; }
+    .msg.success { background: #f0fdf4; border: 1.5px solid #86efac; color: #15803d; }
+    .msg.error   { background: #fef2f2; border: 1.5px solid #fca5a5; color: #b91c1c; }
+
+    /* ── Footer ──────────────────────────────────────────── */
+    footer {
+      background: var(--primary);
+      color: rgba(255,255,255,.7);
+      text-align: center;
+      padding: 18px 24px;
+      font-size: .75rem;
+    }
+    footer a { color: rgba(255,255,255,.9); }
+
+    /* ── Responsive ──────────────────────────────────────── */
+    @media (max-width: 560px) {
+      .card { padding: 28px 20px; }
+      .row  { flex-direction: column; gap: 0; }
+    }
+  </style>
+</head>
+<body>
+
+<header>
+  <div class="header-bar">
+    <a href="https://gototoastmasters.com.au">
+      <img src="https://ccdn.toastmasters.org/medias/files/brand-materials/loyal-blue-masthead-logo.png" alt="Toastmasters">
+    </a>
+    <a href="https://gototoastmasters.com.au">
+      <div>
+        <h1>GOTO Toastmasters</h1>
+        <p>Melbourne CBD · Monthly dinner meetings</p>
+      </div>
+    </a>
+  </div>
+  <nav class="site-nav" aria-label="Site navigation">
+    <a href="https://gototoastmasters.com.au">Welcome</a>
+    <a href="https://gototoastmasters.com.au/pitch/">The Pitch</a>
+    <a href="https://gototoastmasters.com.au/roles/">Roles</a>
+    <a href="https://gototoastmasters.com.au/events/">Events</a>
+    <a href="https://gototoastmasters.com.au/join/" class="active">Join</a>
+  </nav>
+</header>
+
+<main>
+  <div class="card">
+    <h2>Join GOTO Toastmasters</h2>
+    <p>Fill in your details below to apply for membership. A committee member will review your application and be in touch shortly with your invoice.</p>
+
+    <!-- Success message (top — replaces form) -->
+    <div id="msg-success" class="msg success">
+      <strong>Application received!</strong><br>
+      Thanks for applying to GOTO Toastmasters. We've received your application and a committee member will be in touch shortly to confirm your membership and send your invoice.
+    </div>
+
+    <form id="join-form" novalidate>
+
+      <!-- ── Personal details ───────────────────────────── -->
+      <div class="section-title">Your details</div>
+
+      <div class="row">
+        <div class="field">
+          <label for="firstName">First name <span class="req">*</span></label>
+          <input type="text" id="firstName" name="firstName" autocomplete="given-name" required>
+        </div>
+        <div class="field">
+          <label for="lastName">Last name <span class="req">*</span></label>
+          <input type="text" id="lastName" name="lastName" autocomplete="family-name" required>
+        </div>
+      </div>
+
+      <div class="field">
+        <label for="preferredName">Preferred name / badge name</label>
+        <input type="text" id="preferredName" name="preferredName" autocomplete="nickname">
+        <p class="hint">Leave blank to use your full name. This is the name on your badge and invoice.</p>
+      </div>
+
+      <div class="field">
+        <label for="email">Email address <span class="req">*</span></label>
+        <input type="email" id="email" name="email" autocomplete="email" required>
+      </div>
+
+      <div class="field">
+        <label for="phone">Phone / WhatsApp number <span class="req">*</span></label>
+        <input type="tel" id="phone" name="phone" autocomplete="tel" required>
+        <p class="hint">We'll use this to add you to the club WhatsApp group.</p>
+      </div>
+
+      <div class="field">
+        <label for="secondaryEmail">Secondary email for calendar invites</label>
+        <input type="email" id="secondaryEmail" name="secondaryEmail" autocomplete="email">
+        <p class="hint">Optional. If you prefer meeting invites sent to a different address (e.g. work email).</p>
+      </div>
+
+      <!-- ── Toastmasters membership ────────────────────── -->
+      <div class="section-title">Toastmasters membership</div>
+
+      <div class="field">
+        <label>Have you previously been a Toastmasters International member? <span class="req">*</span></label>
+        <div class="radio-group" style="margin-top:8px">
+          <label><input type="radio" name="previouslyTMMember" value="no" checked> No — I'm new to Toastmasters</label>
+          <label><input type="radio" name="previouslyTMMember" value="yes"> Yes — I'm currently or have previously been a TM member</label>
+          <label><input type="radio" name="previouslyTMMember" value="not_sure"> Not sure</label>
+        </div>
+        <p class="hint">Existing TM members (dual club or transferring) have a different membership fee. If you're not sure, we'll follow up.</p>
+      </div>
+
+      <div class="field conditional" id="field-tm-id">
+        <label for="tmMemberId">Toastmasters member ID</label>
+        <input type="text" id="tmMemberId" name="tmMemberId" placeholder="e.g. 12345678">
+        <p class="hint">Your TI member number, found on the TI website or your home club.</p>
+      </div>
+
+      <div class="field conditional" id="field-tm-club">
+        <label for="tmClubPrevious">Club(s) you currently belong to or have belonged to</label>
+        <input type="text" id="tmClubPrevious" name="tmClubPrevious" placeholder="e.g. Melbourne Speakers Club">
+      </div>
+
+      <div class="field">
+        <label>Have you attended a GOTO meeting as a guest before? <span class="req">*</span></label>
+        <div class="radio-group" style="margin-top:8px">
+          <label><input type="radio" name="attendedAsGuest" value="false" checked> No — this will be my first meeting</label>
+          <label><input type="radio" name="attendedAsGuest" value="true"> Yes</label>
+        </div>
+      </div>
+
+      <!-- ── Joining details ────────────────────────────── -->
+      <div class="section-title">Joining details</div>
+
+      <div class="field">
+        <label for="joinMonth">Month I would like to join <span class="req">*</span></label>
+        <select id="joinMonth" name="joinMonth" required>
+          <!-- Options populated by JS on page load -->
+        </select>
+        <p class="hint">Used to calculate your membership fee for the current period.</p>
+      </div>
+
+      <div class="field">
+        <label>Membership term <span class="req">*</span></label>
+        <div class="radio-group" style="margin-top:8px">
+          <label><input type="radio" name="termLength" value="6month" checked> 6 months</label>
+          <label><input type="radio" name="termLength" value="12month"> 12 months</label>
+        </div>
+        <p class="hint">6-month memberships cover 5 formal dinners + 2 special events. 12-month covers 10 formal dinners + 4 special events. See <a href="/pitch/#the-price" target="_blank">pricing</a> for details.</p>
+      </div>
+
+      <div class="field">
+        <label>Badge preference <span class="req">*</span></label>
+        <div class="radio-group" style="margin-top:8px">
+          <label><input type="radio" name="badgePreference" value="Magnetic" checked> Magnetic</label>
+          <label><input type="radio" name="badgePreference" value="Pin"> Pin</label>
+        </div>
+      </div>
+
+      <!-- ── Billing address ────────────────────────────── -->
+      <div class="section-title">Billing details</div>
+
+      <div class="field">
+        <label>Invoice made out to <span class="req">*</span></label>
+        <div class="radio-group" style="margin-top:8px">
+          <label><input type="radio" name="invoiceBilledTo" value="personal" checked> Personal name</label>
+          <label><input type="radio" name="invoiceBilledTo" value="company"> Company / organisation</label>
+        </div>
+      </div>
+
+      <div class="field conditional" id="field-company-name">
+        <label for="companyName">Company / organisation name <span class="req">*</span></label>
+        <input type="text" id="companyName" name="companyName" autocomplete="organization">
+      </div>
+
+      <div class="field">
+        <label for="addressLine1">Address line 1 <span class="req">*</span></label>
+        <input type="text" id="addressLine1" name="addressLine1" autocomplete="address-line1" placeholder="Street address">
+      </div>
+
+      <div class="field">
+        <label for="addressLine2">Address line 2</label>
+        <input type="text" id="addressLine2" name="addressLine2" autocomplete="address-line2" placeholder="Apartment, suite, unit, etc.">
+      </div>
+
+      <div class="row">
+        <div class="field">
+          <label for="addressCity">City / suburb <span class="req">*</span></label>
+          <input type="text" id="addressCity" name="addressCity" autocomplete="address-level2" required>
+        </div>
+        <div class="field" style="max-width:140px">
+          <label for="addressState">State <span class="req">*</span></label>
+          <input type="text" id="addressState" name="addressState" autocomplete="address-level1" required placeholder="VIC">
+        </div>
+      </div>
+
+      <div class="row">
+        <div class="field">
+          <label for="addressCountry">Country <span class="req">*</span></label>
+          <input type="text" id="addressCountry" name="addressCountry" autocomplete="country-name" required value="Australia">
+        </div>
+        <div class="field" style="max-width:140px">
+          <label for="addressPostcode">Postcode <span class="req">*</span></label>
+          <input type="text" id="addressPostcode" name="addressPostcode" autocomplete="postal-code" required inputmode="numeric">
+        </div>
+      </div>
+
+      <!-- ── Dietary & accessibility ────────────────────── -->
+      <div class="section-title">Dietary &amp; accessibility</div>
+
+      <div class="field">
+        <label for="dietaryRequirements">Dietary requirements <span class="req">*</span></label>
+        <select id="dietaryRequirements" name="dietaryRequirements">
+          <option value="None">None</option>
+          <option value="Vegetarian">Vegetarian</option>
+          <option value="Vegan">Vegan</option>
+          <option value="Kosher">Kosher</option>
+          <option value="Halal">Halal</option>
+          <option value="Gluten-free">Gluten-free</option>
+          <option value="Other">Other (please describe below)</option>
+        </select>
+      </div>
+
+      <div class="field" id="dietaryDescriptionField" style="display:none">
+        <label for="dietaryDescription">Please describe your dietary requirement <span class="req">*</span></label>
+        <textarea id="dietaryDescription" name="dietaryDescription" placeholder="e.g. low FODMAP, nut-free, etc."></textarea>
+      </div>
+
+      <div class="field">
+        <label for="allergies">Allergies</label>
+        <input type="text" id="allergies" name="allergies" placeholder="e.g. peanuts, shellfish">
+        <p class="hint">List any food allergies so the venue can accommodate you.</p>
+      </div>
+
+      <div class="field">
+        <label for="accessibilityNeeds">Accessibility needs</label>
+        <textarea id="accessibilityNeeds" name="accessibilityNeeds" placeholder="Is there a disability or accessibility requirement we should know about?"></textarea>
+      </div>
+
+      <!-- ── Optional / how did you find us ────────────── -->
+      <div class="section-title">A little more about you (optional)</div>
+
+      <div class="field">
+        <label for="easySpeak">Easy-Speak ID</label>
+        <input type="text" id="easySpeak" name="easySpeak" placeholder="e.g. 123456">
+        <p class="hint">If you already have an Easy-Speak account, enter your user ID so we can link it.</p>
+      </div>
+
+      <div class="field">
+        <label for="referralSource">How did you find out about GOTO Toastmasters?</label>
+        <input type="text" id="referralSource" name="referralSource" placeholder="e.g. LinkedIn, a friend, a GOTO event…">
+      </div>
+
+      <div class="field">
+        <label for="referredBy">Who encouraged you to join?</label>
+        <input type="text" id="referredBy" name="referredBy" placeholder="Name of the member who referred you">
+      </div>
+
+      <div class="field">
+        <label for="linkedinUrl">LinkedIn profile URL</label>
+        <input type="url" id="linkedinUrl" name="linkedinUrl" placeholder="https://linkedin.com/in/yourname">
+        <p class="hint">Optional. Helps the committee verify your identity and connect with you.</p>
+      </div>
+
+      <div class="field">
+        <label for="comments">Comments / requests</label>
+        <textarea id="comments" name="comments" rows="3" placeholder="e.g. I'd like to discuss a 12-month membership, or any other notes for the committee."></textarea>
+        <p class="hint">Optional. Include any special requests, such as a 12-month membership term, and the committee will follow up before sending your invoice.</p>
+      </div>
+
+      <!-- ── Terms ──────────────────────────────────────── -->
+      <div class="section-title">Terms</div>
+
+      <div class="checkbox-row">
+        <input type="checkbox" id="agreeToTerms" name="agreeToTerms" required>
+        <label for="agreeToTerms">
+          I confirm that I am joining GOTO Toastmasters as a member and agree to the
+          <a href="https://www.toastmasters.org/leadership-central/governing-documents" target="_blank" rel="noopener">Toastmasters International policies and procedures</a>.
+          I understand that membership fees are non-refundable once submitted to Toastmasters International.
+        </label>
+      </div>
+
+      <!-- Honeypot: hidden from real users; bots fill it; server silently discards such submissions -->
+      <input type="text" name="website" id="hp-website" tabindex="-1" autocomplete="off"
+             style="position:absolute;left:-9999px;width:1px;height:1px;opacity:0" aria-hidden="true">
+
+      <button type="submit" class="btn-submit" id="submit-btn">Submit membership application</button>
+
+      <!-- Error message — lives below the submit button so it's always on screen -->
+      <div id="msg-error" class="msg error">
+        <strong>Something went wrong.</strong><br>
+        <span id="error-detail"></span> Please try again or email us at <a href="mailto:goto.toastmasters.committee@gmail.com">goto.toastmasters.committee@gmail.com</a>.
+      </div>
+
+    </form>
+  </div>
+</main>
+
+<footer>
+  &copy; GOTO Toastmasters &nbsp;·&nbsp; Melbourne CBD &nbsp;·&nbsp;
+  <a href="https://gototoastmasters.com.au">gototoastmasters.com.au</a>
+</footer>
+
+<script>
+  // ── CONFIG ─────────────────────────────────────────────────────────────
+  const WEBAPP_URL   = 'https://script.google.com/macros/s/AKfycbwxaVwyjb0dRYx3AnU1p4g9W0SbiqqlUZPyjOgpWA3KhwcjoSbnOa_gSxM8DrX3kT6t/exec';
+  const PAGE_RENDERED_AT = Date.now(); // timing check: bots submit near-instantly
+
+  // ── POPULATE JOIN MONTH SELECT ─────────────────────────────────────────
+  (function populateJoinMonths() {
+    const sel = document.getElementById('joinMonth');
+    const now = new Date();
+    for (let i = 0; i < 9; i++) {
+      const d     = new Date(now.getFullYear(), now.getMonth() + i, 1);
+      const value = d.getFullYear() + '-' + String(d.getMonth() + 1).padStart(2, '0'); // 'YYYY-MM' (local, not UTC)
+      const label = d.toLocaleDateString('en-AU', { month: 'long', year: 'numeric' });
+      const opt   = document.createElement('option');
+      opt.value   = value;
+      opt.textContent = label;
+      if (i === 0) opt.selected = true;
+      sel.appendChild(opt);
+    }
+  })();
+
+  // ── CONDITIONAL: previouslyTMMember ────────────────────────────────────
+  document.querySelectorAll('input[name="previouslyTMMember"]').forEach(r => {
+    r.addEventListener('change', updateTMFields);
+  });
+  function updateTMFields() {
+    const val = document.querySelector('input[name="previouslyTMMember"]:checked').value;
+    // TM ID: show for 'yes' or 'not_sure'
+    document.getElementById('field-tm-id').classList.toggle('visible', val === 'yes' || val === 'not_sure');
+    // TM club: show for 'yes' only
+    document.getElementById('field-tm-club').classList.toggle('visible', val === 'yes');
+  }
+
+  // ── CONDITIONAL: invoiceBilledTo ───────────────────────────────────────
+  document.querySelectorAll('input[name="invoiceBilledTo"]').forEach(r => {
+    r.addEventListener('change', () => {
+      const isCompany = document.querySelector('input[name="invoiceBilledTo"]:checked').value === 'company';
+      document.getElementById('field-company-name').classList.toggle('visible', isCompany);
+    });
+  });
+
+  // ── CONDITIONAL: dietaryRequirements ──────────────────────────────────
+  document.getElementById('dietaryRequirements').addEventListener('change', function () {
+    const field    = document.getElementById('dietaryDescriptionField');
+    const textarea = document.getElementById('dietaryDescription');
+    const isOther  = this.value === 'Other';
+    field.style.display   = isOther ? '' : 'none';
+    textarea.required     = isOther;
+    if (!isOther) textarea.value = '';
+  });
+
+  // ── FORM SUBMIT ────────────────────────────────────────────────────────
+  document.getElementById('join-form').addEventListener('submit', async e => {
+    e.preventDefault();
+
+    const form   = e.target;
+    const btn    = document.getElementById('submit-btn');
+    const msgOk  = document.getElementById('msg-success');
+    const msgErr = document.getElementById('msg-error');
+    const errTxt = document.getElementById('error-detail');
+
+    // HTML5 validation
+    if (!form.checkValidity()) {
+      form.reportValidity();
+      return;
+    }
+
+    function showError(msg) {
+      errTxt.textContent = msg + ' ';
+      msgErr.classList.add('visible');
+      msgErr.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+    }
+
+    // Manual validation: badge preference (radio with default, always set)
+    const badgePref = document.querySelector('input[name="badgePreference"]:checked');
+    if (!badgePref) {
+      showError('Please select a badge preference.');
+      return;
+    }
+
+    // Company name required if company billing selected
+    const billedTo = document.querySelector('input[name="invoiceBilledTo"]:checked').value;
+    if (billedTo === 'company' && !document.getElementById('companyName').value.trim()) {
+      document.getElementById('companyName').focus();
+      showError('Please enter a company or organisation name.');
+      return;
+    }
+
+    const fd = new FormData(form);
+
+    const payload = {
+      // Personal
+      firstName:          fd.get('firstName'),
+      lastName:           fd.get('lastName'),
+      preferredName:      fd.get('preferredName') || '',
+      email:              fd.get('email'),
+      phone:              fd.get('phone'),
+      secondaryEmail:     fd.get('secondaryEmail') || '',
+
+      // Membership
+      previouslyTMMember: fd.get('previouslyTMMember'),
+      tmMemberId:         fd.get('tmMemberId') || '',
+      tmClubPrevious:     fd.get('tmClubPrevious') || '',
+      attendedAsGuest:    fd.get('attendedAsGuest') === 'true',
+
+      // Joining
+      joinMonth:          fd.get('joinMonth'),
+      termLength:         fd.get('termLength') || '6month',
+      badgePreference:    fd.get('badgePreference'),
+
+      // Billing
+      invoiceBilledTo:    fd.get('invoiceBilledTo') || 'personal',
+      companyName:        fd.get('companyName') || '',
+      addressLine1:       fd.get('addressLine1'),
+      addressLine2:       fd.get('addressLine2') || '',
+      addressCity:        fd.get('addressCity'),
+      addressState:       fd.get('addressState'),
+      addressCountry:     fd.get('addressCountry') || 'Australia',
+      addressPostcode:    fd.get('addressPostcode'),
+
+      // Dietary
+      dietaryRequirements: fd.get('dietaryRequirements'),
+      dietaryDescription:  fd.get('dietaryDescription') || '',
+      allergies:           fd.get('allergies') || '',
+      accessibilityNeeds:  fd.get('accessibilityNeeds') || '',
+
+      // Optional
+      easySpeak:          fd.get('easySpeak') || '',
+      referralSource:     fd.get('referralSource') || '',
+      referredBy:         fd.get('referredBy') || '',
+      linkedinUrl:        fd.get('linkedinUrl') || '',
+
+      // Comments
+      comments:           fd.get('comments') || '',
+
+      // Terms
+      agreeToTerms:       fd.get('agreeToTerms') === 'on',
+
+      // Abuse controls
+      website:            fd.get('website') || '',   // honeypot — real users leave blank
+      renderedAt:         PAGE_RENDERED_AT,           // timing check
+    };
+
+    btn.disabled    = true;
+    btn.textContent = 'Submitting…';
+    msgOk.classList.remove('visible');
+    msgErr.classList.remove('visible');
+
+    const controller = new AbortController();
+    const timeoutId  = setTimeout(() => controller.abort(), 30000); // 30 s
+
+    try {
+      const resp = await fetch(WEBAPP_URL, {
+        method:  'POST',
+        body:    JSON.stringify(payload),
+        signal:  controller.signal,
+      });
+      clearTimeout(timeoutId);
+      let data = {};
+      try { data = await resp.json(); } catch (_) { /* non-JSON response — treat as success */ }
+      if (data.status === 'error') {
+        showError(data.message || 'An error occurred.');
+        btn.disabled    = false;
+        btn.textContent = 'Submit membership application';
+      } else {
+        form.style.display = 'none';
+        msgOk.classList.add('visible');
+      }
+    } catch (err) {
+      clearTimeout(timeoutId);
+      const msg = err.name === 'AbortError'
+        ? 'The request timed out after 30 seconds.'
+        : err.message;
+      showError(msg);
+      btn.disabled    = false;
+      btn.textContent = 'Submit membership application';
+    }
+  });
+
+  // ── ADDRESS NORMALISATION ──────────────────────────────────────────────
+  // On blur: title-case street address lines and city; uppercase state and country.
+  // Postcode: strip non-digits and warn if not 4 digits.
+
+  /** Title-case: capitalise first letter of each word, lowercase the rest. */
+  function toTitleCase(s) {
+    return s.trim().replace(/\w\S*/g, w => w.charAt(0).toUpperCase() + w.slice(1).toLowerCase());
+  }
+
+  ['addressLine1', 'addressLine2'].forEach(id => {
+    const el = document.getElementById(id);
+    if (!el) return;
+    el.addEventListener('blur', () => { if (el.value.trim()) el.value = toTitleCase(el.value); });
+  });
+
+  document.getElementById('addressCity')?.addEventListener('blur', function() {
+    if (this.value.trim()) this.value = toTitleCase(this.value);
+  });
+
+  document.getElementById('addressState')?.addEventListener('blur', function() {
+    if (this.value.trim()) this.value = this.value.trim().toUpperCase();
+  });
+
+  document.getElementById('addressCountry')?.addEventListener('blur', function() {
+    if (this.value.trim()) this.value = toTitleCase(this.value);
+  });
+
+  document.getElementById('addressPostcode')?.addEventListener('blur', function() {
+    const v = this.value.replace(/\D/g, '');
+    this.value = v;
+    this.setCustomValidity(v.length === 4 ? '' : 'Please enter a valid 4-digit Australian postcode.');
+  });
+  document.getElementById('addressPostcode')?.addEventListener('input', function() {
+    this.setCustomValidity(''); // clear on edit so re-validation triggers on next blur
+  });
+</script>
+
+</body>
+</html>
