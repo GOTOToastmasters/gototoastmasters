@@ -1,0 +1,54 @@
+# Runs the repo's test suites on every pull request.
+#
+# They existed for months before this workflow did, and nothing ran them. A suite that
+# only runs when someone remembers is a suite that goes stale: 33 assertions sat green
+# locally while a date-parsing bug shipped to the Events page (#73).
+#
+# Deliberately NOT path-filtered. The suites take seconds, and a filter is how a PR goes
+# green having broken something just outside it. The jsdom suites load the real pages from
+# docs/, the publish suites extract real functions from script-publish/ — between them
+# they already reach across most of the repo, and the next suite will reach somewhere new.
+#
+# `pull_request`, NOT `pull_request_target`: these tests need no secrets, and
+# pull_request_target would run PR-authored code against a write-scoped token. Nothing here
+# justifies that risk.
+#
+# Note this workflow does need actions/checkout and actions/setup-node, so if the org's
+# Actions policy is ever set back to `local_only` it will `startup_failure` the way
+# deploy.yml did in August 2026. The difference is that this one is PR-triggered, so the
+# failure shows as a red check in front of whoever opened the PR, rather than on a push run
+# nobody watches. deploy-watchdog.yml takes the other approach and uses no actions at all,
+# because nothing would have been watching it.
+
+name: Tests
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  node:
+    name: node suites
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+
+      # `npm install`, not `npm ci`: tests/package-lock.json is gitignored, so there is no
+      # lockfile to install from. Committing one would make this reproducible and let
+      # setup-node cache the download — see the PR adding this workflow.
+      - name: Install test dependencies
+        working-directory: tests
+        run: npm install --no-audit --no-fund
+
+      - name: Run suites
+        working-directory: tests
+        run: node run.js
